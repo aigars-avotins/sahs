@@ -980,7 +980,7 @@ function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament:
           )}
           <p className="mt-1 text-sm text-pine-soft">
             {placeLine(tournament)}
-            {next.publishedAt ? ` · izloze publicēta ${next.publishedAt}` : tournament.lastRoundAt ? ` · iepriekšējā kārta publicēta ${tournament.lastRoundAt}` : ""}
+            {next.startsAt ? ` · sākums ${next.startsAt}` : tournament.lastRoundAt ? ` · iepriekšējās kārtas sākums ${tournament.lastRoundAt}` : ""}
           </p>
           <Neighbors tournament={tournament} light />
           <a
@@ -1035,7 +1035,7 @@ function RoundNote({ dossier, tournament }: { dossier: Dossier; tournament: Tour
         {colorName(next.color).toLocaleLowerCase("lv")}
         {bye ? ", brīva kārta" : ` pret ${next.opponent}`}.
         {bye ? "" : ` ${ratingLine(next, played)}. ${historyLine(played)}.`}
-        {next.publishedAt ? ` Izloze publicēta ${next.publishedAt}.` : tournament.lastRoundAt ? ` Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.` : ""}
+        {next.startsAt ? ` Sākums ${next.startsAt}.` : tournament.lastRoundAt ? ` Iepriekšējās kārtas sākums ${tournament.lastRoundAt}.` : ""}
       </p>
     );
   }
@@ -1373,7 +1373,7 @@ function summaryText(dossier: Dossier): string {
     lines.push(
       `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}. ${ratingLine(next, played)}. ${historyLine(played)}.`,
     );
-    if (next.publishedAt) lines.push(`Izloze publicēta ${next.publishedAt}.`);
+    if (next.startsAt) lines.push(`Sākums ${next.startsAt}.`);
   } else if (tournament.lastRoundAt) {
     lines.push(`Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.`);
   }

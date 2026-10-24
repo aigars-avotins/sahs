@@ -17,7 +17,7 @@ export type CacheState = {
   nextAllowedAt: number;
   nextRequestAt: number;
   failures: number;
-  policy?: 1;
+  policy?: 1 | 2;
   lastError?: string;
   retryAfterUntil?: number;
 };
@@ -61,13 +61,18 @@ export class SourceCoordinator {
       state.failures = 0;
       delete state.lastError;
     }
-    if (state.policy !== 1) {
-      // Shorten only our legacy first-error 15-minute guard. The old explicit
-      // 403/429 guards were at least an hour and must not be bypassed.
-      if (state.failures === 1 && state.nextAllowedAt <= state.nextRequestAt + 16 * MINUTE) {
-        state.nextAllowedAt = Math.min(state.nextAllowedAt, Math.max(this.now(), state.nextRequestAt - REQUEST_GAP + ACTIVE_TTL));
+    if (state.policy !== 2) {
+      if (state.policy !== 1) {
+        // Shorten only our legacy first-error 15-minute guard. The old explicit
+        // 403/429 guards were at least an hour and must not be bypassed.
+        if (state.failures === 1 && state.nextAllowedAt <= state.nextRequestAt + 16 * MINUTE) {
+          state.nextAllowedAt = Math.min(state.nextAllowedAt, Math.max(this.now(), state.nextRequestAt - REQUEST_GAP + ACTIVE_TTL));
+        }
+      } else if (!state.retryAfterUntil) {
+        // The saved dossier predates historical dates and place counts.
+        state.nextAllowedAt = this.now();
       }
-      state.policy = 1;
+      state.policy = 2;
       await this.store.write(state);
     }
     const reply = (snapshot: Success): Success => ({ ...snapshot, dossier: { ...snapshot.dossier, today: rigaToday(new Date(this.now())), nextCheckAt: new Date(state.nextAllowedAt).toISOString() } });
@@ -117,7 +122,7 @@ export class SourceCoordinator {
       // Bound storage; keep source pages for tournaments still in the dossier.
       const ids = new Set(result.dossier.tournaments.map(t => t.id));
       for (const key of Object.keys(state.entries)) {
-        const id = key.match(/^(?:card|meta|round|standings):(\d+)/)?.[1];
+        const id = key.match(/^(?:card|meta:open|meta|round|standings|field):(\d+)/)?.[1];
         if (id && !ids.has(id)) delete state.entries[key];
       }
       await this.store.write(state);
