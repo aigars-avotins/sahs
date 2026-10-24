@@ -13,9 +13,10 @@
     "deploy": "wrangler deploy --config wrangler.jsonc",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:visual": "playwright test",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run typecheck && npm test && npm run test:runtime && npm run build",
     "build:node": "VITE_CLOUDFLARE=0 vite build",
-    "test:deploy": "node scripts/check-deploy.mjs"
+    "test:deploy": "node scripts/check-deploy.mjs",
+    "test:runtime": "node scripts/check-runtime.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
@@ -38,6 +39,8 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "tsx": "^4.23.15",
-    "wrangler": "^4.152.0"
+    "wrangler": "^4.152.0",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261019.2-beta"
   }
 }

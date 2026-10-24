@@ -38,7 +38,8 @@ export class SourceCoordinator {
   private pending: Promise<LoadResult> | null = null;
   constructor(
     private store: StateStore,
-    private fetcher: typeof fetch = fetch,
+    // Native Workers fetch requires the global receiver, not this coordinator.
+    private fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init),
     private now = Date.now,
     private pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
   ) {}
@@ -52,6 +53,13 @@ export class SourceCoordinator {
   private async run(job: (context: SourceContext) => Promise<Success>): Promise<LoadResult> {
     const saved = await this.store.read();
     const state = saved?.version === 2 ? saved : emptyState();
+    // This local bug failed before an outbound request. Repair its cached
+    // cooldown after deployment, retaining all pages and any upstream hold.
+    if (state.lastError?.startsWith("Illegal invocation:") && !state.retryAfterUntil) {
+      state.nextAllowedAt = this.now();
+      state.failures = 0;
+      delete state.lastError;
+    }
     if (state.policy !== 1) {
       // Shorten only our legacy first-error 15-minute guard. The old explicit
       // 403/429 guards were at least an hour and must not be bypassed.

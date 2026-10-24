@@ -66,3 +66,21 @@ test("legacy first-error guard is shortened, but an old long block is preserved"
   await h.create().load(h.job);assert.equal(h.times.length,0);h.advance(60_001);await h.create().load(h.job);assert.equal(h.times.length,3);
   const blocked=harness();blocked.setState({version:2,entries:{},failures:1,nextRequestAt:Date.parse('2026-10-24T09:00:02Z'),nextAllowedAt:Date.parse('2026-10-24T10:00:00Z')});blocked.advance(60_001);await blocked.create().load(blocked.job);assert.equal(blocked.times.length,0);
 });
+test("default fetch retains the Workers global receiver",async(context)=>{
+  const original=globalThis.fetch;
+  context.mock.method(globalThis,'fetch',function(this:unknown){
+    assert.equal(this,globalThis,'native Workers fetch requires its global receiver');
+    return Promise.resolve(new Response('mocked'));
+  });
+  try {
+    const coordinator=new SourceCoordinator({read:async()=>undefined,write:async()=>{}});
+    const result=await coordinator.load(async source=>{await source.request('https://chess-results.com/binding-check');return {ok:true,dossier:dossier(),stale:false,warning:null};});
+    assert.equal(result.ok,true,!result.ok ? result.error : '');
+  } finally {globalThis.fetch=original;}
+});
+test("a deployment repairs a cached local invocation error without discarding pages",async()=>{
+  const h=harness();h.setState({version:2,policy:1,entries:{keep:{at:0,value:'saved'}},failures:3,lastError:'Illegal invocation: function called with incorrect `this` reference.',nextRequestAt:0,nextAllowedAt:Date.parse('2026-10-24T10:00:00Z')});
+  const result=await h.create().load(h.job);assert.equal(result.ok,true);assert.equal(h.state()!.entries.keep.value,'saved');
+  const blocked=harness();blocked.setState({version:2,policy:1,entries:{},failures:3,lastError:'Illegal invocation: previous failure',retryAfterUntil:Date.parse('2026-10-24T10:00:00Z'),nextRequestAt:0,nextAllowedAt:Date.parse('2026-10-24T10:00:00Z')});
+  await blocked.create().load(blocked.job);assert.equal(blocked.times.length,0);
+});

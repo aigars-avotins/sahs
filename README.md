@@ -60,6 +60,7 @@ Paziņojumi ir papildiespēja aktīvai lapai, neatkarīga no automātiskās datu
 
 ```sh
 npm run check
+npm run test:runtime
 npm run test:deploy
 npx playwright install chromium
 npm run test:visual
@@ -74,3 +75,5 @@ Node testi izmanto saglabātus HTML piemērus, kontrolētu pulksteni un viltotu 
 `npm run test:deploy` pārbauda `wrangler deploy --dry-run` atsevišķā pagaidu direktorijā bez `dist` un `.wrangler`, tādēļ lokāli saglabāta iepriekšējās būves konfigurācija nevar noslēpt šo kļūdu. Pārbaude neko neizvieto un nepieprasa chess-results lapas.
 
 Vecāku turnīru aprakstu avots mēdz paslēpt aiz “Show tournament details”. Šāda lapa netiek uzskatīta par bojātu: sistēma izmanto pieejamos meklēšanas datumus un spēlētāja kartītes, neizraisot visa paneļa atteici vai papildu pieprasījumus apraksta atvēršanai.
+
+`npm run test:runtime` pārbauda noklusēto `fetch` piesaisti un kopīgo kešatmiņu īstā Workers `workerd` izpildvidē (Miniflare). Avota atbildes tiek aizstātas lokāli; ārēji pieprasījumi netiek veikti. Šī pārbaude ir iekļauta `npm run check`.
