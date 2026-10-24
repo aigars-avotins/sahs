@@ -307,7 +307,14 @@ function TopBar({
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
       <div className="mx-auto grid max-w-6xl grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 sm:px-6 md:flex md:items-center">
-        <Knight tone="white" className="mt-0.5 size-10 shrink-0 rounded-lg bg-pine p-0.5" />
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          aria-label="Pārlādēt un atvērt aktuālo turnīru"
+          className="mt-0.5 inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-pine"
+        >
+          <Knight tone="white" className="size-10 p-0.5" />
+        </button>
         <div className="min-w-0 md:flex-1">
           <h1 className="text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
           <p className="mt-1 text-sm leading-snug text-muted">
