@@ -195,7 +195,13 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-bg text-ink">
+    <div className="relative z-0 min-h-screen text-ink">
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url(/bg.jpg)" }}
+      />
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-white/10" />
       <div className="h-1 bg-pine" />
       {children}
     </div>
@@ -259,10 +265,9 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
             {player.birthYear ? ` · dz. ${player.birthYear}` : ""}
             {player.club ? ` · ${player.club}` : ""}
           </p>
-          <p className="mt-3 max-w-xl text-pretty text-lg">
-            Ar ko spēlēts, cik reižu, kā veicies un kur.
-            {totals.bestRank ? ` Labākā vieta — ${totals.bestRank}.` : ""}
-          </p>
+          {totals.bestRank ? (
+            <p className="mt-3 max-w-xl text-pretty text-lg">Labākā vieta — {totals.bestRank}.</p>
+          ) : null}
           <button
             type="button"
             onClick={() => void alerts.toggle()}
