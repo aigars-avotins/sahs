@@ -700,8 +700,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
         <>
           {repeats.length > 0 ? (
             <section>
-              <SectionTitle title="Atkārtoti pretinieki" hint="spēlēts vairāk nekā vienu reizi" />
-              <p className="mb-2 text-sm text-muted">Uzvaras / neizšķirti / zaudējumi</p>
+              <SectionTitle title="Atkārtoti pretinieki" hint="" />
               <ul className="grid gap-1.5">
                 {repeats.map((opponent) => (
                   <li key={opponent.key}>
@@ -717,8 +716,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
           ) : null}
           {onceOpponents.length > 0 ? (
             <section>
-              <SectionTitle title="Pretinieki" hint="partijas, bilance, punkti un punktu īpatsvars" />
-              <p className="mb-2 text-sm text-muted">Uzvaras / neizšķirti / zaudējumi</p>
+              <SectionTitle title="Pretinieki" hint="" />
               <ul className="grid gap-1.5">
                 {onceOpponents.map((opponent) => (
                   <li key={opponent.key}>
@@ -745,7 +743,7 @@ function SectionTitle({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="mb-3 flex items-baseline justify-between gap-3">
       <h2 className="text-2xl">{title}</h2>
-      <p className="text-sm text-muted">{hint}</p>
+      {hint ? <p className="text-sm text-muted">{hint}</p> : null}
     </div>
   );
 }
