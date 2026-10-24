@@ -78,7 +78,7 @@ export function formatPoints(value: number | null): string {
 }
 
 export function formatDate(value: string): string {
-  const match = value.match(/^(\d{4})[./-](\d{2})[./-](\d{2})/);
+  const match = value.match(/^(\d{4})[.\/-](\d{2})[.\/-](\d{2})/);
   if (!match) return value || "—";
   return `${match[3]}.${match[2]}.${match[1]}`;
 }
@@ -235,4 +235,241 @@ export function parseSearchResults(html: string): SearchHit[] {
     });
   }
   return hits;
+}
+
+export type CardParse = {
+  name: string;
+  tournamentName: string;
+  points: number | null;
+  rank: number | null;
+  performance: number | null;
+  startingRank: number | null;
+  birthYear: string;
+  games: Array<Omit<Game, "tournamentId" | "tournamentName" | "tournamentDate" | "location">>;
+};
+
+export function parsePlayerCard(html: string): CardParse {
+  const info = new Map<string, string>();
+  const infoRe =
+    /<tr>\s*<td class="CR">\s*([^<]+?)\s*<\/td>\s*<td class="CR">\s*([^<]*)\s*<\/td>\s*<\/tr>/gi;
+  for (const match of html.matchAll(infoRe)) {
+    info.set(cleanText(match[1]).toLowerCase(), cleanText(match[2]));
+  }
+  const games: CardParse["games"] = [];
+  for (const row of extractRows(html, "CRng")) {
+    const cells = splitCells(row);
+    if (cells.length < 10) continue;
+    const opponent = cellText(cells[4]);
+    if (!opponent) continue;
+    const colorClass = cells[9].match(/class="(Farbe[^"]*)"/i)?.[1] ?? "";
+    const color: PieceColor = /Farbew/i.test(colorClass) ? "white" : colorClass ? "black" : "unknown";
+    const resultRaw = cellText(cells[9]);
+    const parsed = parseResult(resultRaw);
+    const rating = parsePoints(cellText(cells[5]));
+    games.push({
+      round: parsePoints(cellText(cells[0])) ?? 0,
+      board: parsePoints(cellText(cells[1])) ?? 0,
+      opponent,
+      opponentTitle: cellText(cells[3]),
+      opponentRating: rating && rating > 0 ? rating : null,
+      opponentFed: cellText(cells[6]),
+      opponentClub: cellText(cells[7]),
+      opponentPoints: parsePoints(cellText(cells[8])),
+      result: parsed.result,
+      resultRaw,
+      score: parsed.score,
+      color,
+    });
+  }
+  return {
+    name: info.get("name") ?? "",
+    tournamentName: pageTitle(html),
+    points: parsePoints(info.get("points") ?? ""),
+    rank: parsePoints(info.get("rank") ?? ""),
+    performance: parsePoints(info.get("performance rating") ?? ""),
+    startingRank: parsePoints(info.get("starting rank") ?? ""),
+    birthYear: info.get("year of birth") ?? "",
+    games,
+  };
+}
+
+export type TournamentMeta = {
+  name: string;
+  location: string;
+  timeControl: string;
+  organizer: string;
+  lastUpdate: string;
+  eventDate: string;
+  roundsScheduled: number | null;
+};
+
+export function parseTournamentMeta(html: string): TournamentMeta {
+  const flat = cleanText(
+    html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " "),
+  );
+  const timeMatch = flat.match(/Time control(?:\s*\(([^)]+)\))?\s+(.+?)\s+Location/i);
+  const rounds = flat.match(/Number of rounds\s+(\d+)/i)?.[1];
+  return {
+    name: pageTitle(html),
+    location: flat.match(/Location\s+(.+?)\s+Number of rounds/i)?.[1]?.trim() ?? "",
+    timeControl: [timeMatch?.[1], timeMatch?.[2]].filter(Boolean).join(" · "),
+    organizer: flat.match(/Organizer\(s\)\s+(.+?)\s+Federation/i)?.[1]?.trim() ?? "",
+    lastUpdate: flat.match(/Last update\s+([^,]+)/i)?.[1]?.trim() ?? "",
+    eventDate: isoDate(flat.match(/\bDate\s+(\d{4}\/\d{2}\/\d{2})/i)?.[1] ?? ""),
+    roundsScheduled: rounds ? Number(rounds) : null,
+  };
+}
+
+function absoluteChessUrl(href: string): string {
+  if (!href) return "https://chess-results.com/";
+  if (href.startsWith("http")) return href;
+  return `https://chess-results.com/${href.replace(/^\.\//, "")}`;
+}
+
+function longerName(...parts: Array<string | undefined>): string {
+  return (
+    parts
+      .filter((part): part is string => Boolean(part && part.trim()))
+      .sort((a, b) => b.length - a.length)[0] ?? ""
+  );
+}
+
+function opponentKey(name: string, club: string): string {
+  return `${name.toLocaleLowerCase("lv")}::${club.toLocaleLowerCase("lv")}`;
+}
+
+export function buildDossier(input: {
+  hits: SearchHit[];
+  cards: Array<CardParse | null>;
+  metas: Array<TournamentMeta | null>;
+  fetchedAt: string;
+  today: string;
+  fideId: string;
+}): Dossier {
+  const tournaments: Tournament[] = input.hits.map((hit, index) => {
+    const card = input.cards[index];
+    const meta = input.metas[index];
+    const location = meta?.location ?? "";
+    const name = longerName(meta?.name, card?.tournamentName, hit.tournamentName);
+    const games: Game[] = (card?.games ?? []).map((game) => ({
+      ...game,
+      tournamentId: hit.id,
+      tournamentName: name,
+      tournamentDate: hit.endDate || meta?.eventDate || "",
+      location,
+    }));
+    return {
+      id: hit.id,
+      name,
+      url: absoluteChessUrl(hit.tournamentHref || `tnr${hit.id}.aspx?lan=1`),
+      playerUrl: absoluteChessUrl(hit.playerHref),
+      endDate: hit.endDate || meta?.eventDate || "",
+      rank: card?.rank ?? hit.rank,
+      rounds: hit.rounds,
+      fieldSize: hit.fieldSize,
+      club: hit.club,
+      fed: hit.fed,
+      points: card?.points ?? null,
+      performance: card?.performance ?? null,
+      startingRank: card?.startingRank ?? null,
+      birthYear: card?.birthYear ?? "",
+      location,
+      timeControl: meta?.timeControl ?? "",
+      organizer: meta?.organizer ?? "",
+      lastUpdate: meta?.lastUpdate ?? "",
+      roundsScheduled: meta?.roundsScheduled ?? null,
+      partial: card == null,
+      games,
+    };
+  });
+
+  tournaments.sort((a, b) => (a.endDate < b.endDate ? 1 : a.endDate > b.endDate ? -1 : 0));
+
+  const games = tournaments.flatMap((tournament) => tournament.games);
+  const byOpponent = new Map<string, Opponent>();
+  for (const game of games) {
+    const key = opponentKey(game.opponent, game.opponentClub);
+    let row = byOpponent.get(key);
+    if (!row) {
+      row = {
+        key,
+        name: game.opponent,
+        club: game.opponentClub,
+        fed: game.opponentFed,
+        games: 0,
+        scored: 0,
+        wins: 0,
+        draws: 0,
+        losses: 0,
+        score: 0,
+        lastDate: "",
+        lastTournament: "",
+        lastLocation: "",
+        lastResult: "unknown",
+        meetings: [],
+      };
+      byOpponent.set(key, row);
+    }
+    row.games += 1;
+    row.meetings.push(game);
+    if (game.score != null) {
+      row.scored += 1;
+      row.score += game.score;
+      if (game.result === "win") row.wins += 1;
+      if (game.result === "draw") row.draws += 1;
+      if (game.result === "loss") row.losses += 1;
+    }
+  }
+
+  const opponents = [...byOpponent.values()];
+  for (const opponent of opponents) {
+    opponent.meetings.sort((a, b) => {
+      if (a.tournamentDate !== b.tournamentDate) return a.tournamentDate < b.tournamentDate ? 1 : -1;
+      return b.round - a.round;
+    });
+    const latest = opponent.meetings[0];
+    if (latest) {
+      opponent.lastDate = latest.tournamentDate;
+      opponent.lastTournament = latest.tournamentName;
+      opponent.lastLocation = latest.location;
+      opponent.lastResult = latest.result;
+    }
+  }
+  opponents.sort((a, b) => b.games - a.games || b.score - a.score || a.name.localeCompare(b.name, "lv"));
+
+  const scored = games.filter((game) => game.score != null);
+  const ranks = tournaments
+    .map((tournament) => tournament.rank)
+    .filter((rank): rank is number => rank != null && rank > 0);
+  const profile = tournaments[0];
+  const missing = tournaments.filter((tournament) => tournament.partial).length;
+  const siteName = input.hits.find((hit) => hit.name)?.name || "Avotins, Valters";
+
+  return {
+    player: {
+      name: siteName,
+      fideId: input.fideId,
+      birthYear: tournaments.find((tournament) => tournament.birthYear)?.birthYear ?? "",
+      club: profile?.club ?? "",
+      fed: profile?.fed ?? "LAT",
+    },
+    fetchedAt: input.fetchedAt,
+    today: input.today,
+    tournaments,
+    opponents,
+    totals: {
+      tournaments: tournaments.length,
+      games: games.length,
+      scored: scored.length,
+      wins: scored.filter((game) => game.result === "win").length,
+      draws: scored.filter((game) => game.result === "draw").length,
+      losses: scored.filter((game) => game.result === "loss").length,
+      score: scored.reduce((sum, game) => sum + (game.score ?? 0), 0),
+      bestRank: ranks.length ? Math.min(...ranks) : null,
+    },
+    partialNote:
+      missing > 0
+        ? "Daļu turnīru lapu neizdevās nolasīt. Spied «Atjaunot», lai mēģinātu vēlreiz."
+        : null,
+  };
 }
