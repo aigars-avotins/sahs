@@ -201,7 +201,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
         <a className="underline decoration-line underline-offset-4" href="https://chess-results.com/" target="_blank" rel="noreferrer">
           chess-results.com
         </a>
-        . FIDE {result.dossier.player.fideId}. Atsvaidzini turnīra laikā ar pogu Atjaunot.
+        . Atsvaidzini turnīra laikā ar pogu Atjaunot.
       </footer>
     </Shell>
   );
@@ -252,8 +252,14 @@ function TopBar({
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
         <Knight tone="white" className="size-10 shrink-0 rounded-lg bg-pine p-0.5" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{DISPLAY_NAME}</p>
-          <p className="truncate text-sm text-muted">Atjaunots {formatStamp(dossier.fetchedAt)}</p>
+          <p className="truncate font-medium">
+            {DISPLAY_NAME}
+            <span className="font-normal text-muted"> · FIDE {dossier.player.fideId}</span>
+          </p>
+          <p className="truncate text-sm text-muted">
+            {dossier.player.club ? `${dossier.player.club} · ` : ""}
+            Atjaunots {formatStamp(dossier.fetchedAt)}
+          </p>
         </div>
         <button
           type="button"
@@ -296,20 +302,14 @@ function TopBar({
 }
 
 function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
-  const { player } = dossier;
   return (
     <section className="rounded-3xl border border-line bg-white p-5 sm:p-6">
-      <p className="text-muted">
-        FIDE {player.fideId}
-        {player.birthYear ? ` · dz. ${player.birthYear}` : ""}
-        {player.club ? ` · ${player.club}` : ""}
-      </p>
       <button
         type="button"
         onClick={() => void alerts.toggle()}
         aria-pressed={alerts.enabled}
         className={
-          "mt-4 inline-flex h-12 items-center gap-2 rounded-full px-5 font-medium " +
+          "inline-flex h-12 items-center gap-2 rounded-full px-5 font-medium " +
           (alerts.enabled ? "border border-pine bg-white text-pine" : "bg-pine text-white")
         }
       >
