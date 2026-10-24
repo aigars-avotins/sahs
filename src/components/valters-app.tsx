@@ -281,11 +281,11 @@ function TopBar({
   const stamped = formatStamp(dossier.fetchedAt);
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
-      <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-6">
         <Knight tone="white" className="size-10 shrink-0 rounded-lg bg-pine p-0.5" />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl sm:text-2xl">{DISPLAY_NAME}</h1>
-          <p className="truncate text-sm text-muted">
+          <p className="hidden truncate text-sm text-muted sm:block">
             FIDE {dossier.player.fideId}
             {dossier.player.club ? ` · ${dossier.player.club}` : ""}
           </p>
@@ -314,6 +314,10 @@ function TopBar({
             {loading ? "Notiek" : `Dati ${fresh}`}
           </p>
         </div>
+        <p className="w-full text-sm text-muted sm:hidden">
+          FIDE {dossier.player.fideId}
+          {dossier.player.club ? <span className="mt-0.5 block break-words">{dossier.player.club}</span> : null}
+        </p>
       </div>
       {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
       <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 sm:px-4">
