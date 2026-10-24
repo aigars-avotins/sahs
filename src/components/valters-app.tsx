@@ -684,8 +684,14 @@ function TournamentCard({
             <div>
               <dt className="text-muted">Vieta</dt>
               <dd className="text-lg font-medium">
-                {tournament.rank ?? "—"}
-                {tournament.fieldSize ? <span className="text-muted">/{tournament.fieldSize}</span> : null}
+                {tournament.rank != null ? (
+                  <>
+                    {tournament.rank}.
+                    {tournament.fieldSize ? <span className="text-muted"> no {tournament.fieldSize}</span> : null}
+                  </>
+                ) : (
+                  "—"
+                )}
               </dd>
             </div>
           </dl>

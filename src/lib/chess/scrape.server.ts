@@ -1,5 +1,5 @@
 import {
-  buildDossier, decodeEntities, parsePlayerCard, parseRoundClock,
+  buildDossier, countParticipants, decodeEntities, parsePlayerCard, parseRoundClock,
   parseRoundPairing, parseSearchResults, parseStandings, parseTournamentMeta,
   pendingGameFromCard, rigaToday, type SearchHit,
 } from "./parse";
@@ -155,6 +155,19 @@ async function tournamentMetaHtml(source: SourceContext, id: string): Promise<st
   return page.html;
 }
 
+async function participantCount(source: SourceContext, id: string): Promise<number | null> {
+  for (const art of ["1", "0"]) {
+    try {
+      const html = (await request(source, `https://chess-results.com/tnr${id}.aspx?lan=1&art=${art}&fed=LAT&turdet=YES&flag=30`)).html;
+      const count = countParticipants(html);
+      if (count) return count;
+    } catch {
+      // The other list may still be public.
+    }
+  }
+  return null;
+}
+
 export async function scrapeDossier(source: SourceContext): Promise<Extract<LoadResult, { ok: true }>> {
   const hits = await searchPlayer(source);
   const today = rigaToday();
@@ -164,6 +177,10 @@ export async function scrapeDossier(source: SourceContext): Promise<Extract<Load
   for (const hit of hits) {
     const meta = await source.memo(`meta:open:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)));
     meta.location ||= EXTRA_PLACE[hit.id] || "";
+    if (!hit.fieldSize && !meta.fieldSize) {
+      const size = await source.memo(`field:${hit.id}`, HISTORY_TTL, () => participantCount(source, hit.id));
+      if (size) meta.fieldSize = size;
+    }
     const endDate = meta.eventDate || hit.endDate;
     const active = meta.startDate <= today && endDate >= today;
     const card = await source.memo(`card:${hit.id}`, active ? ACTIVE_TTL : HISTORY_TTL, async () => {

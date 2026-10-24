@@ -506,6 +506,15 @@ export function parseStandings(html: string, playerName: string, snr?: string): 
   };
 }
 
+export function countParticipants(html: string): number | null {
+  let count = 0;
+  for (const row of rankingRows(html)) {
+    const cells = splitCells(row);
+    if (cells.map(cellText).some((text) => text.includes(","))) count += 1;
+  }
+  return count > 0 ? count : null;
+}
+
 function newestRating(input: {
   hits: SearchHit[];
   cards: Array<CardParse | null>;
