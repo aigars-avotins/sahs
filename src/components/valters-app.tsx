@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   BellOff,
+  ChevronDown,
   ExternalLink,
   MapPin,
   RefreshCw,
@@ -33,6 +34,35 @@ import {
 import type { Dossier, Game, GameResult, LoadResult, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
 
 const DISPLAY_NAME = "Valters Avotiņš";
+
+function freshnessLabel(iso: string): string {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return "nav zināms";
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60_000));
+  if (mins < 1) return "tikko";
+  if (mins < 60) return `pirms ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `pirms ${hours} h`;
+  return `pirms ${Math.floor(hours / 24)} d`;
+}
+
+function eventLabel(tournament: Tournament, today: string): string | null {
+  if (tournament.nextGame || tournament.awaitingPairing) return "Notiek";
+  if (!tournament.endDate) return null;
+  const status = dayStatus(tournament.endDate, today) as string;
+  if (status === "today" || status === "live") return "Notiek";
+  if (status === "upcoming") return "Gaidāms";
+  if (status === "past") return "Noslēdzies";
+  return null;
+}
+
+function maxPoints(tournament: Tournament): { value: number; playedOnly: boolean } | null {
+  if (tournament.roundsScheduled && tournament.roundsScheduled > 0) {
+    return { value: tournament.roundsScheduled, playedOnly: false };
+  }
+  const scored = tournament.games.filter((game) => game.score != null).length;
+  return scored > 0 ? { value: scored, playedOnly: true } : null;
+}
 
 type PageTab = "now" | "all" | "opponents" | "stats";
 
@@ -209,7 +239,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative z-0 min-h-screen text-ink">
+    <div className="relative z-0 min-h-screen overflow-x-clip text-ink">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
@@ -247,47 +277,55 @@ function TopBar({
     setDark(Boolean(next));
   }
   const live = dossier.tournaments.find((tournament) => tournament.nextGame);
+  const fresh = freshnessLabel(dossier.fetchedAt);
+  const stamped = formatStamp(dossier.fetchedAt);
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
         <Knight tone="white" className="size-10 shrink-0 rounded-lg bg-pine p-0.5" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">
-            {DISPLAY_NAME}
-            <span className="font-normal text-muted"> · FIDE {dossier.player.fideId}</span>
+          <h1 className="truncate text-xl sm:text-2xl">{DISPLAY_NAME}</h1>
+          <p className="truncate text-sm text-muted">
+            FIDE {dossier.player.fideId}
+            {dossier.player.club ? ` · ${dossier.player.club}` : ""}
           </p>
-          {dossier.player.club ? <p className="truncate text-sm text-muted">{dossier.player.club}</p> : null}
         </div>
         <button
           type="button"
           onClick={toggleTheme}
           aria-pressed={dark}
-          className="inline-flex h-12 items-center gap-2 rounded-full border border-line bg-surface px-4 font-medium"
+          aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
+          className="inline-flex size-11 items-center justify-center rounded-full border border-line bg-surface"
         >
           {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
-          <span className="hidden sm:inline">{dark ? "Gaišs" : "Tumšs"}</span>
         </button>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="inline-flex h-12 items-center gap-2 rounded-full bg-pine px-5 font-medium text-surface disabled:opacity-60"
-        >
-          <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
-          <span>{loading ? "Atjauno" : "Atjaunot"}</span>
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            aria-busy={loading}
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-pine px-4 font-medium text-surface disabled:opacity-60"
+          >
+            <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
+            <span>{loading ? "Atjauno…" : "Atjaunot"}</span>
+          </button>
+          <p className="text-xs text-muted" title={stamped ? `Atjaunots ${stamped}` : undefined}>
+            {loading ? "Notiek" : `Dati ${fresh}`}
+          </p>
+        </div>
       </div>
       {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
-      <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 pb-3 sm:px-6">
+      <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 sm:px-4">
         {PAGE_TABS.map((item) => (
           <button
             key={item.id}
             type="button"
-            aria-pressed={tab === item.id}
+            aria-current={tab === item.id ? "page" : undefined}
             onClick={() => onTab(item.id)}
             className={
-              "h-12 shrink-0 rounded-full px-4 text-sm font-medium " +
-              (tab === item.id ? "bg-pine text-white" : "border border-line bg-surface")
+              "h-11 shrink-0 border-b-2 px-3 text-sm font-medium " +
+              (tab === item.id ? "border-pine text-ink" : "border-transparent text-muted")
             }
           >
             {item.label}
@@ -298,26 +336,29 @@ function TopBar({
   );
 }
 
-function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
+function Overview({ alerts, dossier }: { alerts: AlertState; dossier: Dossier }) {
   return (
-    <section className="rounded-3xl border border-line bg-white p-5 sm:p-6">
+    <section className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <button
         type="button"
         onClick={() => void alerts.toggle()}
         aria-pressed={alerts.enabled}
         className={
-          "inline-flex h-12 items-center gap-2 rounded-full px-5 font-medium " +
-          (alerts.enabled ? "border border-pine bg-white text-pine" : "bg-pine text-white")
+          "inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-medium " +
+          (alerts.enabled ? "border border-pine bg-white text-pine" : "border border-line bg-surface")
         }
       >
         {alerts.enabled ? <BellOff className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
         {alerts.enabled ? "Paziņojumi ieslēgti" : "Paziņot telefonā"}
       </button>
-      <p className="mt-2 max-w-md text-sm text-muted">
-        {alerts.note ||
-          "Ja ieslēgsi paziņojumus, telefons paziņos, kad chess-results publicēs nākamo pretinieku. Lapa jātur atvērta."}
-      </p>
       <CopySummary dossier={dossier} />
+      {alerts.note ? <p className="w-full text-sm text-muted">{alerts.note}</p> : null}
+      <details className="w-full">
+        <summary className="cursor-pointer text-sm text-muted">Kā darbojas paziņojumi</summary>
+        <p className="mt-1 max-w-xl text-sm text-muted">
+          Ja ieslēgsi paziņojumus, telefons paziņos, kad chess-results publicēs nākamo pretinieku. Lapa jātur atvērta.
+        </p>
+      </details>
     </section>
   );
 }
@@ -327,9 +368,7 @@ function CurrentView({ dossier, alerts }: { dossier: Dossier; alerts: AlertState
   const shown = live.length > 0 ? live : dossier.tournaments.slice(0, 1);
   return (
     <div className="grid gap-4">
-      <Overview dossier={dossier} alerts={alerts} />
       <NextGames dossier={dossier} />
-      {live.length === 0 ? <p className="text-muted">Šodien turnīra nav. Rādu pēdējo.</p> : null}
       {shown.length === 0 ? (
         <Empty>Turnīru vēl nav.</Empty>
       ) : (
@@ -341,9 +380,11 @@ function CurrentView({ dossier, alerts }: { dossier: Dossier; alerts: AlertState
             games={tournament.games}
             today={dossier.today}
             startOpen
+            featured
           />
         ))
       )}
+      <Overview alerts={alerts} dossier={dossier} />
     </div>
   );
 }
@@ -351,10 +392,14 @@ function CurrentView({ dossier, alerts }: { dossier: Dossier; alerts: AlertState
 function StatsView({ dossier }: { dossier: Dossier }) {
   const { totals } = dossier;
   const stats = [
-    { label: "Turnīri", value: String(totals.tournaments) },
-    { label: "Partijas", value: String(totals.games) },
-    { label: "Punkti", value: formatPoints(totals.score) },
-    { label: "Bilance", value: `${totals.wins}–${totals.draws}–${totals.losses}` },
+    { label: "Turnīri", value: String(totals.tournaments), hint: "" },
+    { label: "Partijas", value: String(totals.games), hint: "" },
+    { label: "Punkti", value: formatPoints(totals.score), hint: "" },
+    {
+      label: "Bilance",
+      value: `${totals.wins}–${totals.draws}–${totals.losses}`,
+      hint: "Uzvaras / neizšķirti / zaudējumi",
+    },
   ];
   return (
     <div className="grid gap-4">
@@ -363,6 +408,7 @@ function StatsView({ dossier }: { dossier: Dossier }) {
           <div key={stat.label} className="rounded-2xl border border-line bg-white px-4 py-4">
             <p className="text-sm text-muted">{stat.label}</p>
             <p className="mt-1 font-display text-3xl text-pine tabular-nums">{stat.value}</p>
+            {stat.hint ? <p className="mt-1 text-xs text-muted">{stat.hint}</p> : null}
           </div>
         ))}
       </div>
@@ -404,6 +450,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
   const [selected, setSelected] = useState<string | null>(null);
   const [year, setYear] = useState("all");
   const [pace, setPace] = useState("all");
+  const [opponentSort, setOpponentSort] = useState<"games" | "name">("games");
   const needle = query.trim();
   const years = useMemo(() => {
     const found = new Set(dossier.tournaments.map((tournament) => tournament.endDate.slice(0, 4)).filter(Boolean));
@@ -473,6 +520,13 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
     );
   }, [scopedOpponents, needle]);
 
+  const orderedOpponents = useMemo(() => {
+    const rows = [...opponents];
+    if (opponentSort === "name") rows.sort((a, b) => a.name.localeCompare(b.name, "lv"));
+    else rows.sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"));
+    return rows;
+  }, [opponents, opponentSort]);
+
   const repeats = useMemo(() => {
     const groups = new Map<string, Opponent[]>();
     for (const opponent of opponents) {
@@ -520,26 +574,45 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
           />
         </label>
         {part === "tournaments" ? (
-          <div className="flex flex-wrap gap-2">
-            <FilterChip pressed={year === "all"} onClick={() => setYear("all")}>
-              Visi gadi
+          <div className="grid gap-3 sm:grid-cols-2">
+            <fieldset className="min-w-0">
+              <legend className="mb-2 text-sm font-medium">Gads</legend>
+              <div className="flex flex-wrap gap-2">
+                <FilterChip pressed={year === "all"} onClick={() => setYear("all")}>
+                  Visi
+                </FilterChip>
+                {years.map((item) => (
+                  <FilterChip key={item} pressed={year === item} onClick={() => setYear(item)}>
+                    {item}
+                  </FilterChip>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="min-w-0">
+              <legend className="mb-2 text-sm font-medium">Temps</legend>
+              <div className="flex flex-wrap gap-2">
+                <FilterChip pressed={pace === "all"} onClick={() => setPace("all")}>
+                  Visi
+                </FilterChip>
+                <FilterChip pressed={pace === "rapid"} onClick={() => setPace("rapid")}>
+                  Rapids
+                </FilterChip>
+                <FilterChip pressed={pace === "other"} onClick={() => setPace("other")}>
+                  Citi
+                </FilterChip>
+              </div>
+            </fieldset>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Kārtošana">
+            <FilterChip pressed={opponentSort === "games"} onClick={() => setOpponentSort("games")}>
+              Pēc partijām
             </FilterChip>
-            {years.map((item) => (
-              <FilterChip key={item} pressed={year === item} onClick={() => setYear(item)}>
-                {item}
-              </FilterChip>
-            ))}
-            <FilterChip pressed={pace === "all"} onClick={() => setPace("all")}>
-              Visi tempi
-            </FilterChip>
-            <FilterChip pressed={pace === "rapid"} onClick={() => setPace("rapid")}>
-              Rapids
-            </FilterChip>
-            <FilterChip pressed={pace === "other"} onClick={() => setPace("other")}>
-              Citi
+            <FilterChip pressed={opponentSort === "name"} onClick={() => setOpponentSort("name")}>
+              Pēc vārda
             </FilterChip>
           </div>
-        ) : null}
+        )}
         {needle ? (
           <p className="px-4 text-sm text-muted">
             {part === "tournaments"
@@ -592,12 +665,12 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
             </section>
           ) : null}
           <section>
-            <SectionTitle title="Pretinieki" hint={needle ? `${opponents.length} atbilst` : "cik reižu un kā veicies"} />
-            {opponents.length === 0 ? (
+            <SectionTitle title="Pretinieki" hint="partijas, bilance, punkti un punktu īpatsvars" />
+            {orderedOpponents.length === 0 ? (
               <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
             ) : (
               <ul className="grid gap-2">
-                {opponents.map((opponent) => (
+                {orderedOpponents.map((opponent) => (
                   <li key={opponent.key}>
                     <OpponentRow
                       opponent={opponent}
@@ -635,16 +708,18 @@ function TournamentCard({
   today,
   startOpen,
   games,
+  featured = false,
 }: {
   dossier: Dossier;
   tournament: Tournament;
   today: string;
   startOpen: boolean;
   games: Game[];
+  featured?: boolean;
 }) {
-  const status = dayStatus(tournament.endDate, today);
-  const badge = status === "today" ? "Šodien" : status === "upcoming" ? "Gaidāms" : null;
+  const label = eventLabel(tournament, today);
   const medal = tournament.rank != null && tournament.rank >= 1 && tournament.rank <= 3;
+  const cap = maxPoints(tournament);
   const [opened, setOpened] = useState(startOpen);
   useEffect(() => {
     setOpened(startOpen);
@@ -652,21 +727,25 @@ function TournamentCard({
   return (
     <article className={`min-w-0 rounded-2xl border-2 bg-surface ${scoreBorder(tournament)}`}>
       <details className="group" open={opened} onToggle={(event) => setOpened(event.currentTarget.open)}>
-        <summary className="flex cursor-pointer list-none flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+        <summary
+          aria-expanded={opened}
+          className="flex cursor-pointer list-none flex-col gap-3 rounded-2xl px-4 py-4 hover:bg-bg-deep sm:flex-row sm:items-center sm:px-5"
+        >
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              {badge ? (
-                <span className="rounded-full bg-pine px-2 py-0.5 text-xs font-medium text-surface">{badge}</span>
+              {label ? (
+                <span className="rounded-full bg-pine px-2 py-0.5 text-xs font-medium text-surface">{label}</span>
               ) : null}
               {medal ? (
-                <span className="rounded-full bg-pine-soft px-2 py-0.5 text-xs font-medium text-pine">
+                <span className="inline-flex items-center gap-1 rounded-full bg-pine-soft px-2 py-0.5 text-xs font-medium text-pine">
+                  <Trophy className="size-3.5" aria-hidden />
                   {tournament.rank}. vieta
                 </span>
               ) : null}
-              <h3 className="text-xl">{tournament.name}</h3>
+              <h3 className={featured ? "text-2xl" : "text-xl"}>{tournament.name}</h3>
             </div>
             <p className="mt-1 text-sm text-muted">
-              <span className="tabular-nums">{formatDate(tournament.endDate)}</span>
+              {tournament.endDate ? <span className="tabular-nums">{formatDate(tournament.endDate)}</span> : null}
               {tournament.location ? (
                 <span className="mt-1 flex items-start gap-1">
                   <MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -675,25 +754,41 @@ function TournamentCard({
               ) : null}
             </p>
           </div>
-          <dl className="flex gap-4 text-sm tabular-nums sm:text-right">
+          <dl className={"flex gap-4 tabular-nums sm:text-right " + (featured ? "text-base" : "text-sm")}>
             <div>
               <dt className="text-muted">Punkti</dt>
-              <dd className="text-lg font-medium">{formatPoints(tournament.points)}</dd>
+              <dd className={featured ? "font-display text-4xl text-pine" : "text-lg font-medium"}>
+                {formatPoints(tournament.points)}
+                {cap ? (
+                  <span className="text-base font-sans text-muted">
+                    {" "}
+                    no {cap.value}
+                    {cap.playedOnly ? " nospēlētām" : ""}
+                  </span>
+                ) : null}
+              </dd>
             </div>
             <div>
               <dt className="text-muted">Vieta</dt>
-              <dd className="text-lg font-medium">
+              <dd className={featured ? "font-display text-4xl text-pine" : "text-lg font-medium"}>
                 {tournament.rank != null ? (
                   <>
                     {tournament.rank}.
-                    {tournament.fieldSize ? <span className="text-muted"> no {tournament.fieldSize}</span> : null}
+                    {tournament.fieldSize ? <span className="text-base font-sans text-muted"> no {tournament.fieldSize}</span> : null}
                   </>
                 ) : (
                   "—"
                 )}
               </dd>
             </div>
+            {featured && tournament.performance ? (
+              <div>
+                <dt className="text-muted">Performance</dt>
+                <dd className="font-display text-4xl text-pine">{tournament.performance}</dd>
+              </div>
+            ) : null}
           </dl>
+          <ChevronDown className="size-5 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
         </summary>
         <div className="border-t border-line px-4 py-4 sm:px-5">
           <div className="mb-4 grid gap-1 text-sm text-muted">
@@ -730,26 +825,48 @@ function TournamentCard({
 function GameTable({ games }: { games: Game[] }) {
   if (games.length === 0) return <p className="text-sm text-muted">Partijas vēl nav publicētas.</p>;
   return (
-    <ol className="grid gap-2">
-      {games.map((game) => (
-        <li
-          key={`${game.tournamentId}-${game.round}-${game.opponent}`}
-          className="grid grid-cols-[2.5rem_2.75rem_1fr_auto] items-center gap-3 rounded-xl bg-bg px-3 py-3"
-        >
-          <span className="text-sm text-muted tabular-nums">{game.round}.</span>
-          <PieceMark color={game.color} />
-          <span className="min-w-0">
-            <span className="block truncate font-medium">{game.opponent}</span>
-            <span className="block truncate text-sm text-muted">
-              {colorName(game.color).toLocaleLowerCase("lv")}
-              {game.board > 0 ? ` · ${game.board}. galds` : ""}
-              {game.opponentClub ? ` · ${game.opponentClub}` : ""}
-            </span>
-          </span>
-          <ResultMark result={game.result} />
-        </li>
-      ))}
-    </ol>
+    <div>
+      <div className="mb-2 hidden grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_9rem] gap-3 px-3 text-xs font-medium text-muted sm:grid">
+        <span>Kārta</span>
+        <span>Pretinieks</span>
+        <span>Krāsa</span>
+        <span>Galds</span>
+        <span>Rezultāts</span>
+      </div>
+      <ol className="grid gap-2">
+        {games.map((game) => (
+          <li key={`${game.tournamentId}-${game.round}-${game.opponent}`} className="rounded-xl bg-bg px-3 py-3">
+            <div className="flex items-start justify-between gap-3 sm:hidden">
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{game.opponent}</span>
+                {game.opponentClub ? <span className="block truncate text-sm text-muted">{game.opponentClub}</span> : null}
+              </span>
+              <ResultMark result={game.result} labeled />
+            </div>
+            <p className="mt-1 flex items-center gap-2 text-sm text-muted sm:hidden">
+              <PieceMark color={game.color} />
+              <span>
+                {game.round}. kārta · {colorName(game.color).toLocaleLowerCase("lv")}
+                {game.board > 0 ? ` · ${game.board}. galds` : ""}
+              </span>
+            </p>
+            <div className="hidden items-center gap-3 sm:grid sm:grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_9rem]">
+              <span className="text-sm text-muted tabular-nums">{game.round}.</span>
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{game.opponent}</span>
+                {game.opponentClub ? <span className="block truncate text-sm text-muted">{game.opponentClub}</span> : null}
+              </span>
+              <span className="inline-flex items-center gap-2 text-sm">
+                <PieceMark color={game.color} />
+                <span className="sr-only">{colorName(game.color)}</span>
+              </span>
+              <span className="text-sm tabular-nums">{game.board > 0 ? game.board : "—"}</span>
+              <ResultMark result={game.result} labeled />
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -788,6 +905,7 @@ function OpponentRow({
           {opponent.wins}–{opponent.draws}–{opponent.losses}
         </span>
         <span className="block text-sm text-muted tabular-nums">{formatPoints(opponent.score)} · {percent}%</span>
+        <span className="block text-xs text-muted">punktu īpatsvars</span>
       </span>
     </button>
   );
@@ -841,20 +959,33 @@ function PieceMark({ color }: { color: PieceColor }) {
   );
 }
 
-function ResultMark({ result }: { result: GameResult }) {
+function ResultMark({ result, labeled = false }: { result: GameResult; labeled?: boolean }) {
   const view = {
     win: { label: "1", name: "Uzvara", cls: "bg-pine-soft text-pine" },
-    draw: { label: "½", name: "Neizšķirts", cls: "bg-bg-deep text-brass" },
+    draw: { label: "½", name: "Neizšķirts", cls: "bg-bg-deep text-ink" },
     loss: { label: "0", name: "Zaudējums", cls: "bg-bg-deep text-loss" },
     unknown: { label: "–", name: "Nav rezultāta", cls: "bg-bg-deep text-muted" },
   }[result];
-  return (
+  const mark = (
     <span
       title={view.name}
-      aria-label={view.name}
-      className={`grid size-9 place-items-center rounded-full text-sm font-medium tabular-nums ${view.cls}`}
+      aria-hidden={labeled}
+      className={`grid size-11 place-items-center rounded-full text-sm font-medium tabular-nums ${view.cls}`}
     >
       {view.label}
+    </span>
+  );
+  if (!labeled) {
+    return (
+      <span aria-label={view.name} className="inline-flex">
+        {mark}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-2" aria-label={`${view.label}, ${view.name}`}>
+      {mark}
+      <span className="text-sm">{view.name}</span>
     </span>
   );
 }
@@ -1058,11 +1189,12 @@ function Charts({ dossier }: { dossier: Dossier }) {
       <SectionTitle title="Grafiki" hint="turnīri, bilance un krāsas" />
       <div className="grid gap-3 lg:grid-cols-2">
         <TournamentPoints dossier={dossier} />
+        <TournamentShare dossier={dossier} />
         <TournamentResults dossier={dossier} />
         {today && today.games.length > 0 ? <RoundBars tournament={today} /> : null}
         <BalanceBar dossier={dossier} />
-        <ColorSplit title="Krāsas" hint="visas partijas" games={games} />
-        <ColorSplit title="Krāsas uzvarās" hint="tikai uzvarētās partijas" games={games.filter((game) => game.result === "win")} />
+        <ColorSplit title="Spēlētās krāsas" hint="visas partijas" games={games} />
+        <ColorRecord games={games} />
       </div>
     </section>
   );
@@ -1084,14 +1216,14 @@ function TournamentPoints({ dossier }: { dossier: Dossier }) {
   const max = Math.max(1, ...rows.map((tournament) => tournament.points ?? 0));
   if (rows.length === 0) return null;
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 lg:col-span-2">
+    <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Punkti turnīros</h3>
-      <p className="mt-1 text-sm text-muted">Katrs stabiņš ir viens turnīrs. Augstums ir punkti, nevis vieta.</p>
-      <div className="mt-4 flex h-40 items-end gap-2 overflow-x-auto pb-1">
+      <p className="mt-1 text-sm text-muted">Ass: punkti. Katrs stabiņš ir viens turnīrs.</p>
+      <div className="mt-4 flex h-44 items-end gap-2">
         {rows.map((tournament) => {
           const points = tournament.points ?? 0;
           return (
-            <div key={tournament.id} className="flex w-14 shrink-0 flex-col items-center gap-1" title={tournament.name}>
+            <div key={tournament.id} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={tournament.name}>
               <span className="text-xs tabular-nums">{formatPoints(points)}</span>
               <div className="flex h-24 w-full items-end">
                 <div className="w-full rounded-sm bg-pine" style={{ height: `${Math.max(8, (points / max) * 100)}%` }} />
@@ -1100,6 +1232,40 @@ function TournamentPoints({ dossier }: { dossier: Dossier }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function TournamentShare({ dossier }: { dossier: Dossier }) {
+  const rows = chartRows(dossier)
+    .map((tournament) => {
+      const cap = maxPoints(tournament);
+      if (tournament.points == null || !cap) return null;
+      return {
+        id: tournament.id,
+        name: tournament.name,
+        date: tournament.endDate,
+        share: tournament.points / cap.value,
+        note: cap.playedOnly ? "no nospēlētajām" : "no kārtām",
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4">
+      <h3 className="text-xl">Punktu īpatsvars</h3>
+      <p className="mt-1 text-sm text-muted">Punkti dalīti ar kārtu skaitu. Ja kārtas nav zināmas, ar nospēlētajām partijām.</p>
+      <div className="mt-4 flex h-44 items-end gap-2">
+        {rows.map((row) => (
+          <div key={row.id} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={`${row.name}: ${Math.round(row.share * 100)}% ${row.note}`}>
+            <span className="text-xs tabular-nums">{Math.round(row.share * 100)}%</span>
+            <div className="flex h-24 w-full items-end">
+              <div className="w-full rounded-sm bg-pine" style={{ height: `${Math.max(8, row.share * 100)}%` }} />
+            </div>
+            <span className="text-xs text-muted tabular-nums">{shortWhen(row.date)}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1122,15 +1288,15 @@ function TournamentResults({ dossier }: { dossier: Dossier }) {
   const max = Math.max(1, ...rows.map((row) => row.wins + row.draws + row.losses));
   if (rows.length === 0) return null;
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 lg:col-span-2">
+    <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Rezultāti turnīros</h3>
-      <p className="mt-1 text-sm text-muted">Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums.</p>
-      <div className="mt-4 flex h-40 items-end gap-2 overflow-x-auto pb-1">
+      <p className="mt-1 text-sm text-muted">Ass: partiju skaits. Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums.</p>
+      <div className="mt-4 flex h-44 items-end gap-2">
         {rows.map((row) => {
           const total = row.wins + row.draws + row.losses;
           const height = (total / max) * 100;
           return (
-            <div key={row.id} className="flex w-14 shrink-0 flex-col items-center gap-1" title={row.name}>
+            <div key={row.id} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={row.name}>
               <span className="text-xs tabular-nums">{total}</span>
               <div className="flex h-24 w-full items-end">
                 <div className="flex w-full flex-col-reverse overflow-hidden rounded-sm" style={{ height: `${Math.max(8, height)}%` }}>
@@ -1200,6 +1366,40 @@ function BalanceBar({ dossier }: { dossier: Dossier }) {
           <li key={part.label}>
             <span className="block text-muted">{part.label}</span>
             <span className="font-medium tabular-nums">{part.value}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ColorRecord({ games }: { games: Game[] }) {
+  const rows = (["white", "black"] as const)
+    .map((color) => {
+      const played = games.filter((game) => game.color === color && game.score != null);
+      return { color, played: played.length, wins: played.filter((game) => game.result === "win").length };
+    })
+    .filter((row) => row.played > 0);
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4">
+      <h3 className="text-xl">Uzvaras pēc krāsas</h3>
+      <p className="mt-1 text-sm text-muted">Uzvaras no visām ar šo krāsu spēlētajām partijām.</p>
+      <ul className="mt-4 grid gap-3">
+        {rows.map((row) => (
+          <li key={row.color}>
+            <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+              <span className="inline-flex items-center gap-2">
+                <Knight tone={row.color} className="size-5" />
+                {row.color === "white" ? "Baltie" : "Melnie"}
+              </span>
+              <span className="tabular-nums">
+                {row.wins} uzvaras no {row.played}
+              </span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-bg-deep">
+              <div className="h-full bg-pine" style={{ width: `${(row.wins / row.played) * 100}%` }} />
+            </div>
           </li>
         ))}
       </ul>
@@ -1337,23 +1537,16 @@ function Neighbors({ tournament, light = false }: { tournament: Tournament; ligh
 function RoundLine({ games }: { games: Game[] }) {
   const rows = [...games].sort((a, b) => a.round - b.round);
   if (rows.length === 0) return null;
-  let sum = 0;
   return (
     <div className="mb-4">
-      <p className="mb-2 text-sm text-muted">Punkti pēc kārtas</p>
+      <p className="mb-2 text-sm text-muted">Partiju rezultāti</p>
       <ol className="flex gap-2 overflow-x-auto pb-1">
         {rows.map((game) => {
-          if (game.score != null) sum += game.score;
-          const cls = game.score == null ? "bg-line" : game.score >= 1 ? "bg-pine" : game.score > 0 ? "bg-pine-soft" : "bg-loss";
-          const height = game.score == null ? 12 : game.score >= 1 ? 100 : game.score > 0 ? 58 : 28;
-          const total = game.score == null ? null : sum;
+          const mark = game.score == null ? "—" : game.score >= 1 ? "1" : game.score > 0 ? "½" : "0";
           return (
             <li key={`${game.round}-${game.opponent}`} className="grid min-w-9 justify-items-center gap-1 text-xs text-muted tabular-nums">
-              <span className="flex h-10 w-full items-end" title={game.opponent}>
-                <span className={`w-full rounded-sm ${cls}`} style={{ height: `${height}%` }} />
-              </span>
               <span>{game.round}</span>
-              <span className="text-ink">{formatPoints(total)}</span>
+              <span className="text-base text-ink">{mark}</span>
             </li>
           );
         })}
@@ -1404,15 +1597,16 @@ function CopySummary({ dossier, compact = false }: { dossier: Dossier; compact?:
   return (
     <button
       type="button"
+      aria-label="Kopēt kopsavilkumu"
       onClick={() => void copy()}
       className={
         compact
           ? "inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-white/15 px-3 text-sm font-medium"
-          : "mt-4 inline-flex h-12 items-center gap-2 rounded-full border border-line px-4 font-medium"
+          : "inline-flex h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium"
       }
     >
       <Copy className="size-4" aria-hidden />
-      {done ? "Nokopēts" : "Kopēt"}
+      {done ? "Nokopēts" : compact ? "Kopsavilkums" : "Kopēt kopsavilkumu"}
     </button>
   );
 }
