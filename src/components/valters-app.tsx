@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Bell,
   BellOff,
@@ -44,6 +44,31 @@ function freshnessLabel(iso: string): string {
   const hours = Math.floor(mins / 60);
   if (hours < 48) return `pirms ${hours} h`;
   return `pirms ${Math.floor(hours / 24)} d`;
+}
+
+function displayTournamentName(name: string, endDate: string): string {
+  if (!endDate) return name;
+  const iso = endDate.slice(0, 10);
+  const parts = iso.split("-");
+  if (parts.length < 3) return name;
+  const [year, month, day] = parts;
+  const forms = [
+    formatDate(iso),
+    iso,
+    `${year}/${month}/${day}`,
+    `${day}.${month}.${year}`,
+    `${day}.${month}.${year.slice(2)}`,
+  ];
+  let next = name;
+  for (const form of forms) {
+    if (form && next.includes(form)) next = next.replace(form, " ");
+  }
+  return next.replace(/\s{2,}/g, " ").replace(/\s+([,.:;–-])/g, "$1").trim();
+}
+
+function statusClass(label: string | null): string {
+  if (label === "Notiek") return "bg-pine text-surface";
+  return "bg-bg-deep text-muted";
 }
 
 function eventLabel(tournament: Tournament, today: string): string | null {
@@ -525,9 +550,17 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
   }, [scopedOpponents, needle]);
 
   const orderedOpponents = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const opponent of opponents) {
+      const key = fold(opponent.name);
+      totals.set(key, (totals.get(key) ?? 0) + (opponent.meetings.length || opponent.games));
+    }
     const rows = [...opponents];
-    if (opponentSort === "name") rows.sort((a, b) => a.name.localeCompare(b.name, "lv"));
-    else rows.sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"));
+    rows.sort((a, b) => {
+      if (opponentSort === "name") return a.name.localeCompare(b.name, "lv");
+      const byGames = (totals.get(fold(b.name)) ?? 0) - (totals.get(fold(a.name)) ?? 0);
+      return byGames || a.name.localeCompare(b.name, "lv");
+    });
     return rows;
   }, [opponents, opponentSort]);
 
@@ -655,7 +688,8 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
           {repeats.length > 0 ? (
             <section>
               <SectionTitle title="Atkārtoti pretinieki" hint="spēlēts vairāk nekā vienu reizi" />
-              <ul className="grid gap-2">
+              <p className="mb-2 text-sm text-muted">Uzvaras / neizšķirti / zaudējumi</p>
+              <ul className="grid gap-1.5">
                 {repeats.map((opponent) => (
                   <li key={opponent.key}>
                     <OpponentRow
@@ -670,10 +704,11 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
           ) : null}
           <section>
             <SectionTitle title="Pretinieki" hint="partijas, bilance, punkti un punktu īpatsvars" />
+            <p className="mb-2 text-sm text-muted">Uzvaras / neizšķirti / zaudējumi</p>
             {orderedOpponents.length === 0 ? (
               <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
             ) : (
-              <ul className="grid gap-2">
+              <ul className="grid gap-1.5">
                 {orderedOpponents.map((opponent) => (
                   <li key={opponent.key}>
                     <OpponentRow
@@ -704,6 +739,17 @@ function SectionTitle({ title, hint }: { title: string; hint: string }) {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-muted">{children}</p>;
+}
+
+function MetaLine({ tournament, featured }: { tournament: Tournament; featured: boolean }) {
+  const bits = [
+    tournament.timeControl ? shortTime(tournament.timeControl) : "",
+    !featured && tournament.performance ? `Performance ${tournament.performance}` : "",
+    tournament.organizer,
+    tournament.lastUpdate ? `Avots atjaunots: ${tournament.lastUpdate}` : "",
+  ].filter(Boolean);
+  if (bits.length === 0) return null;
+  return <p className="mb-3 text-sm leading-snug text-muted">{bits.join(" · ")}</p>;
 }
 
 function TournamentCard({
@@ -738,7 +784,7 @@ function TournamentCard({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {label ? (
-                <span className="rounded-full bg-pine px-2 py-0.5 text-xs font-medium text-surface">{label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(label)}`}>{label}</span>
               ) : null}
               {medal ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-pine-soft px-2 py-0.5 text-xs font-medium text-pine">
@@ -746,7 +792,7 @@ function TournamentCard({
                   {tournament.rank}. vieta
                 </span>
               ) : null}
-              <h3 className={featured ? "text-2xl" : "text-xl"}>{tournament.name}</h3>
+              <h3 className={featured ? "text-2xl" : "text-xl"}>{displayTournamentName(tournament.name, tournament.endDate)}</h3>
             </div>
             <p className="mt-1 text-sm text-muted">
               {tournament.endDate ? <span className="tabular-nums">{formatDate(tournament.endDate)}</span> : null}
@@ -794,13 +840,8 @@ function TournamentCard({
           </dl>
           <ChevronDown className="size-5 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
         </summary>
-        <div className="border-t border-line px-4 py-4 sm:px-5">
-          <div className="mb-4 grid gap-1 text-sm text-muted">
-            {tournament.timeControl ? <p className="break-words">{shortTime(tournament.timeControl)}</p> : null}
-            {tournament.performance ? <p>Performance {tournament.performance}</p> : null}
-            {tournament.organizer ? <p className="break-words">{tournament.organizer}</p> : null}
-            {tournament.lastUpdate ? <p>Lapā: {tournament.lastUpdate}</p> : null}
-          </div>
+        <div className="border-t border-line px-4 py-3 sm:px-5">
+          <MetaLine tournament={tournament} featured={featured} />
           <Neighbors tournament={tournament} />
           {tournament.partial ? (
             <p className="text-sm text-brass">Partiju sarakstu šoreiz neizdevās nolasīt.</p>
@@ -890,11 +931,11 @@ function OpponentRow({
       aria-pressed={pressed}
       onClick={onSelect}
       className={
-        "flex w-full items-center gap-3 rounded-2xl border border-line px-4 py-4 text-left motion-reduce:transition-none " +
+        "flex min-h-11 w-full items-center gap-3 rounded-2xl border border-line px-3 py-2 text-left motion-reduce:transition-none " +
         (pressed ? "bg-pine-soft" : "bg-surface")
       }
     >
-      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-bg-deep text-sm font-medium">
+      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-bg-deep text-sm font-medium">
         {initials(opponent.name)}
       </span>
       <span className="min-w-0 flex-1">
@@ -908,8 +949,7 @@ function OpponentRow({
         <span className="block font-medium tabular-nums">
           {opponent.wins}–{opponent.draws}–{opponent.losses}
         </span>
-        <span className="block text-sm text-muted tabular-nums">{formatPoints(opponent.score)} · {percent}%</span>
-        <span className="block text-xs text-muted">punktu īpatsvars</span>
+        <span className="block text-sm text-muted tabular-nums">{formatPoints(opponent.score)} punkti · {percent}%</span>
       </span>
     </button>
   );
@@ -1215,28 +1255,88 @@ function shortWhen(value: string): string {
   return match ? `${match[3]}.${match[2]}` : "—";
 }
 
+function niceTop(value: number): number {
+  if (value <= 1) return 1;
+  const exp = 10 ** Math.floor(Math.log10(value));
+  const step = value / exp;
+  const nice = step <= 1 ? 1 : step <= 2 ? 2 : step <= 5 ? 5 : 10;
+  return nice * exp;
+}
+
+function ScaleBars({
+  caption,
+  top,
+  ticks,
+  rows,
+}: {
+  caption: string;
+  top: number;
+  ticks: number[];
+  rows: { id: string; name: string; date: string; label: string; amount: number; bar: ReactNode }[];
+}) {
+  const scale = Math.max(top, 1);
+  return (
+    <>
+      <p className="mt-1 text-sm text-muted">{caption}</p>
+      <div className="mt-3 flex gap-2">
+        <div className="flex h-36 w-8 shrink-0 flex-col justify-between pt-4 text-right text-[10px] leading-none text-muted tabular-nums">
+          {ticks.map((tick) => (
+            <span key={tick}>{top === 100 ? `${tick}%` : Number.isInteger(tick) ? tick : tick.toFixed(1)}</span>
+          ))}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="relative h-36 pt-4">
+            <div className="pointer-events-none absolute inset-x-0 top-4 bottom-0 flex flex-col justify-between">
+              {ticks.map((tick) => (
+                <div key={tick} className="border-t border-line" />
+              ))}
+            </div>
+            <div className="relative flex h-full items-end gap-1">
+              {rows.map((row) => (
+                <div key={row.id} className="flex h-full min-w-0 flex-1 items-end" title={row.name}>
+                  <div className="relative w-full" style={{ height: `${Math.max(0, (row.amount / scale) * 100)}%` }}>
+                    <span className="absolute bottom-full left-1/2 mb-0.5 -translate-x-1/2 text-[10px] leading-none tabular-nums whitespace-nowrap">
+                      {row.label}
+                    </span>
+                    {row.bar}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-1 flex gap-1">
+            {rows.map((row) => (
+              <span key={row.id} className="min-w-0 flex-1 truncate text-center text-[10px] text-muted tabular-nums">
+                {shortWhen(row.date)}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function TournamentPoints({ dossier }: { dossier: Dossier }) {
   const rows = chartRows(dossier).filter((tournament) => tournament.points != null);
-  const max = Math.max(1, ...rows.map((tournament) => tournament.points ?? 0));
   if (rows.length === 0) return null;
+  const top = niceTop(Math.max(...rows.map((tournament) => tournament.points ?? 0)));
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Punkti turnīros</h3>
-      <p className="mt-1 text-sm text-muted">Ass: punkti. Katrs stabiņš ir viens turnīrs.</p>
-      <div className="mt-4 flex h-44 items-end gap-2">
-        {rows.map((tournament) => {
-          const points = tournament.points ?? 0;
-          return (
-            <div key={tournament.id} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={tournament.name}>
-              <span className="text-xs tabular-nums">{formatPoints(points)}</span>
-              <div className="flex h-24 w-full items-end">
-                <div className="w-full rounded-sm bg-pine" style={{ height: `${Math.max(8, (points / max) * 100)}%` }} />
-              </div>
-              <span className="text-xs text-muted tabular-nums">{shortWhen(tournament.endDate)}</span>
-            </div>
-          );
-        })}
-      </div>
+      <ScaleBars
+        caption="Katrs stabiņš ir viens turnīrs."
+        top={top}
+        ticks={[top, top / 2, 0]}
+        rows={rows.map((tournament) => ({
+          id: tournament.id,
+          name: tournament.name,
+          date: tournament.endDate,
+          label: formatPoints(tournament.points),
+          amount: tournament.points ?? 0,
+          bar: <div className="h-full w-full rounded-sm bg-pine" />,
+        }))}
+      />
     </div>
   );
 }
@@ -1259,18 +1359,19 @@ function TournamentShare({ dossier }: { dossier: Dossier }) {
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Punktu īpatsvars</h3>
-      <p className="mt-1 text-sm text-muted">Punkti dalīti ar kārtu skaitu. Ja kārtas nav zināmas, ar nospēlētajām partijām.</p>
-      <div className="mt-4 flex h-44 items-end gap-2">
-        {rows.map((row) => (
-          <div key={row.id} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={`${row.name}: ${Math.round(row.share * 100)}% ${row.note}`}>
-            <span className="text-xs tabular-nums">{Math.round(row.share * 100)}%</span>
-            <div className="flex h-24 w-full items-end">
-              <div className="w-full rounded-sm bg-pine" style={{ height: `${Math.max(8, row.share * 100)}%` }} />
-            </div>
-            <span className="text-xs text-muted tabular-nums">{shortWhen(row.date)}</span>
-          </div>
-        ))}
-      </div>
+      <ScaleBars
+        caption="Punkti dalīti ar kārtu skaitu. Ja kārtas nav zināmas, ar nospēlētajām partijām. Mērogs 0–100%."
+        top={100}
+        ticks={[100, 50, 0]}
+        rows={rows.map((row) => ({
+          id: row.id,
+          name: `${row.name}: ${row.note}`,
+          date: row.date,
+          label: `${Math.round(row.share * 100)}%`,
+          amount: row.share * 100,
+          bar: <div className="h-full w-full rounded-sm bg-pine" />,
+        }))}
+      />
     </div>
   );
 }
@@ -1290,30 +1391,33 @@ function TournamentResults({ dossier }: { dossier: Dossier }) {
     })
     .filter((row) => row.wins + row.draws + row.losses > 0);
   const max = Math.max(1, ...rows.map((row) => row.wins + row.draws + row.losses));
+  const top = niceTop(max);
   if (rows.length === 0) return null;
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Rezultāti turnīros</h3>
-      <p className="mt-1 text-sm text-muted">Ass: partiju skaits. Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums.</p>
-      <div className="mt-4 flex h-44 items-end gap-2">
-        {rows.map((row) => {
+      <ScaleBars
+        caption="Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums."
+        top={top}
+        ticks={[top, top / 2, 0]}
+        rows={rows.map((row) => {
           const total = row.wins + row.draws + row.losses;
-          const height = (total / max) * 100;
-          return (
-            <div key={row.id} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={row.name}>
-              <span className="text-xs tabular-nums">{total}</span>
-              <div className="flex h-24 w-full items-end">
-                <div className="flex w-full flex-col-reverse overflow-hidden rounded-sm" style={{ height: `${Math.max(8, height)}%` }}>
-                  {row.wins > 0 ? <div className="bg-pine" style={{ flex: row.wins }} /> : null}
-                  {row.draws > 0 ? <div className="bg-pine-soft" style={{ flex: row.draws }} /> : null}
-                  {row.losses > 0 ? <div className="bg-loss" style={{ flex: row.losses }} /> : null}
-                </div>
+          return {
+            id: row.id,
+            name: row.name,
+            date: row.date,
+            label: String(total),
+            amount: total,
+            bar: (
+              <div className="flex h-full w-full flex-col-reverse overflow-hidden rounded-sm">
+                {row.wins > 0 ? <div className="bg-pine" style={{ flex: row.wins }} /> : null}
+                {row.draws > 0 ? <div className="bg-pine-soft" style={{ flex: row.draws }} /> : null}
+                {row.losses > 0 ? <div className="bg-loss" style={{ flex: row.losses }} /> : null}
               </div>
-              <span className="text-xs text-muted tabular-nums">{shortWhen(row.date)}</span>
-            </div>
-          );
+            ),
+          };
         })}
-      </div>
+      />
     </div>
   );
 }
@@ -1533,15 +1637,27 @@ function RoundLine({ games }: { games: Game[] }) {
   const rows = [...games].sort((a, b) => a.round - b.round);
   if (rows.length === 0) return null;
   return (
-    <div className="mb-4">
+    <div className="mb-3">
       <p className="mb-2 text-sm text-muted">Partiju rezultāti</p>
-      <ol className="flex gap-2 overflow-x-auto pb-1">
+      <ol className="flex gap-1.5 overflow-x-auto pb-1">
         {rows.map((game) => {
           const mark = game.score == null ? "—" : game.score >= 1 ? "1" : game.score > 0 ? "½" : "0";
+          const tone =
+            game.score == null
+              ? "bg-bg-deep text-muted"
+              : game.score >= 1
+                ? "bg-pine-soft text-pine"
+                : game.score > 0
+                  ? "bg-bg-deep text-ink"
+                  : "bg-loss/15 text-loss";
           return (
-            <li key={`${game.round}-${game.opponent}`} className="grid min-w-9 justify-items-center gap-1 text-xs text-muted tabular-nums">
-              <span>{game.round}</span>
-              <span className="text-base text-ink">{mark}</span>
+            <li
+              key={`${game.round}-${game.opponent}`}
+              className={`grid h-12 w-9 shrink-0 grid-rows-2 place-items-center rounded-lg text-center tabular-nums ${tone}`}
+              title={game.opponent}
+            >
+              <span className="text-[10px] leading-none text-muted">{game.round}</span>
+              <span className="text-sm leading-none font-medium">{mark}</span>
             </li>
           );
         })}
