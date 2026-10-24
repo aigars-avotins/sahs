@@ -1,3 +1,4 @@
+import { safeStorage } from "../storage";
 import type { Dossier, NextGame } from "./types";
 
 export const ALERT_KEY = "valters-alerts";
@@ -31,11 +32,12 @@ export function freshPairings(previous: string | null, current: string[]): strin
 }
 
 export function rememberPairings(keys: string[]) {
-  localStorage.setItem(SEEN_KEY, keys.join("\n"));
+  const known = new Set([...(storedPairings()?.split("\n").filter(Boolean) || []), ...keys]);
+  safeStorage.set(SEEN_KEY, [...known].slice(-200).join("\n"));
 }
 
 export function storedPairings(): string | null {
-  return localStorage.getItem(SEEN_KEY);
+  return safeStorage.get(SEEN_KEY);
 }
 
 export function pairingBody(key: string): string {
@@ -57,7 +59,7 @@ export async function showPairingNotification(body: string) {
         body,
         lang: "lv",
         tag: "valters-next",
-        icon: "/favicon.svg",
+        icon: "/icon-192.png",
       });
     } else {
       new Notification(title, { body, lang: "lv" });
@@ -114,3 +116,4 @@ export function playChime() {
     osc.stop(now + offset + 0.2);
   }
 }
+

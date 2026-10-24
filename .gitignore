@@ -7,3 +7,12 @@ screenshots/
 artifacts/
 *.log
 .DS_Store
+
+
+.cache/
+.wrangler/
+.dev.vars
+.env*
+
+playwright-report/
+test-results/

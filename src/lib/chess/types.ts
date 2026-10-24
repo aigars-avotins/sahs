@@ -1,11 +1,12 @@
 export type GameResult = "win" | "draw" | "loss" | "unknown";
 export type PieceColor = "white" | "black" | "unknown";
-export type DayStatus = "today" | "upcoming" | "past" | "unknown";
+export type DayStatus = "today" | "live" | "upcoming" | "past" | "unknown";
 
 export type Game = {
   round: number;
   board: number;
   opponent: string;
+  opponentFideId?: string;
   opponentTitle: string;
   opponentRating: number | null;
   opponentFed: string;
@@ -26,12 +27,13 @@ export type NextGame = {
   board: number;
   color: PieceColor;
   opponent: string;
+  opponentFideId?: string;
   opponentTitle: string;
   opponentRating: number | null;
   opponentFed: string;
   opponentPoints: number | null;
   url: string;
-  publishedAt: string;
+  startsAt: string;
 };
 
 export type StandingRow = {
@@ -51,6 +53,7 @@ export type Tournament = {
   name: string;
   url: string;
   playerUrl: string;
+  startDate: string;
   endDate: string;
   rank: number | null;
   rounds: number | null;
@@ -80,6 +83,7 @@ export type Opponent = {
   club: string;
   fed: string;
   games: number;
+  pending: number;
   scored: number;
   wins: number;
   draws: number;
@@ -102,12 +106,14 @@ export type Dossier = {
     fed: string;
   };
   fetchedAt: string;
+  nextCheckAt: string;
   today: string;
   tournaments: Tournament[];
   opponents: Opponent[];
   totals: {
     tournaments: number;
     games: number;
+    pending: number;
     scored: number;
     wins: number;
     draws: number;
@@ -120,4 +126,5 @@ export type Dossier = {
 
 export type LoadResult =
   | { ok: true; dossier: Dossier; stale: boolean; warning: string | null }
-  | { ok: false; error: string };
+  | { ok: false; error: string; nextCheckAt?: string };
+
