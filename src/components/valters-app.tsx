@@ -1242,7 +1242,7 @@ function Charts({ dossier }: { dossier: Dossier }) {
   if (games.length === 0 && !today) return null;
   return (
     <section>
-      <SectionTitle title="Grafiki" hint="turnīri, bilance un krāsas" />
+      <SectionTitle title="Grafiki" hint="" />
       <div className="grid gap-3 lg:grid-cols-2">
         <TournamentPoints dossier={dossier} />
         <TournamentShare dossier={dossier} />
@@ -1289,7 +1289,7 @@ function ScaleBars({
   const scale = Math.max(top, 1);
   return (
     <>
-      <p className="mt-1 text-sm text-muted">{caption}</p>
+      {caption ? <p className="mt-1 text-sm text-muted">{caption}</p> : null}
       <div className="mt-3 flex gap-2">
         <div className="flex h-36 w-8 shrink-0 flex-col justify-between pt-4 text-right text-[10px] leading-none text-muted tabular-nums">
           {ticks.map((tick) => (
@@ -1337,7 +1337,7 @@ function TournamentPoints({ dossier }: { dossier: Dossier }) {
     <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Punkti turnīros</h3>
       <ScaleBars
-        caption="Katrs stabiņš ir viens turnīrs."
+        caption=""
         top={top}
         ticks={[top, top / 2, 0]}
         rows={rows.map((tournament) => ({
