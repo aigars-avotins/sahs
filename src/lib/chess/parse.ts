@@ -56,6 +56,11 @@ export function parsePoints(raw: string): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function positiveRating(raw: string): number | null {
+  const value = parsePoints(raw);
+  return value != null && value > 0 ? value : null;
+}
+
 export function parseResult(raw: string): { result: GameResult; score: number | null } {
   const text = raw.replace(/\s/g, "").replace(",", ".");
   if (text === "1" || text === "1.0" || text === "+" || text === "1-0") {
@@ -245,6 +250,7 @@ export type CardParse = {
   points: number | null;
   rank: number | null;
   performance: number | null;
+  rating: number | null;
   startingRank: number | null;
   birthYear: string;
   games: Array<Omit<Game, "tournamentId" | "tournamentName" | "tournamentDate" | "location">>;
@@ -293,6 +299,7 @@ export function parsePlayerCard(html: string): CardParse {
     points: parsePoints(info.get("points") ?? ""),
     rank: parsePoints(info.get("rank") ?? ""),
     performance: parsePoints(info.get("performance rating") ?? ""),
+    rating: positiveRating(info.get("rating international") ?? "") ?? positiveRating(info.get("rating") ?? ""),
     startingRank: parsePoints(info.get("starting rank") ?? ""),
     birthYear: info.get("year of birth") ?? "",
     games,
@@ -480,6 +487,21 @@ export function parseStandings(html: string, playerName: string): Standings | nu
   };
 }
 
+function newestRating(input: {
+  hits: SearchHit[];
+  cards: Array<CardParse | null>;
+  metas: Array<TournamentMeta | null>;
+}): number | null {
+  const rated = input.hits
+    .map((hit, index) => ({
+      date: hit.endDate || input.metas[index]?.eventDate || "",
+      rating: input.cards[index]?.rating ?? null,
+    }))
+    .filter((row) => row.rating != null && row.rating > 0);
+  rated.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return rated[0]?.rating ?? null;
+}
+
 export function buildDossier(input: {
   hits: SearchHit[];
   cards: Array<CardParse | null>;
@@ -605,6 +627,7 @@ export function buildDossier(input: {
     player: {
       name: siteName,
       fideId: input.fideId,
+      rating: newestRating(input),
       birthYear: tournaments.find((tournament) => tournament.birthYear)?.birthYear ?? "",
       club: profile?.club ?? "",
       fed: profile?.fed ?? "LAT",

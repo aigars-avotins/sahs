@@ -104,35 +104,6 @@ function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<v
   return { enabled, note, toggle };
 }
 
-const NOTES_KEY = "valters-notes";
-
-function noteId(game: Game): string {
-  return `${game.tournamentId}:${game.round}:${game.opponent}`;
-}
-
-function useNotes(): { notes: Record<string, string>; save: (id: string, text: string) => void } {
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  useEffect(() => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(NOTES_KEY) || "{}") as Record<string, string>;
-      if (parsed && typeof parsed === "object") setNotes(parsed);
-    } catch {
-      setNotes({});
-    }
-  }, []);
-  function save(id: string, text: string) {
-    setNotes((current) => {
-      const next = { ...current };
-      const trimmed = text.trim();
-      if (trimmed) next[id] = trimmed;
-      else delete next[id];
-      localStorage.setItem(NOTES_KEY, JSON.stringify(next));
-      return next;
-    });
-  }
-  return { notes, save };
-}
-
 export function ValtersPending() {
   return (
     <Shell>
@@ -175,8 +146,6 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
   }
 
   const alerts = usePairingAlerts(result.ok ? result.dossier : null, refreshQuiet);
-  const notes = useNotes();
-
   if (!result.ok) {
     return (
       <Shell>
@@ -216,15 +185,15 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
         <Overview dossier={result.dossier} alerts={alerts} />
         <NextGames dossier={result.dossier} />
         <Charts dossier={result.dossier} />
-        <Records dossier={result.dossier} />
-        <Board dossier={result.dossier} notes={notes} />
+        <Board dossier={result.dossier} />
       </main>
       <footer className="mx-auto max-w-6xl px-4 pt-4 pb-10 text-sm text-muted sm:px-6">
         Dati tikai no{" "}
         <a className="underline decoration-line underline-offset-4" href="https://chess-results.com/" target="_blank" rel="noreferrer">
           chess-results.com
         </a>
-        . FIDE {result.dossier.player.fideId}. Atsvaidzini turnīra laikā ar pogu Atjaunot.
+        . FIDE {result.dossier.player.fideId}
+        {result.dossier.player.rating ? ` · ${result.dossier.player.rating}` : " · nav reitinga"}. Atsvaidzini turnīra laikā ar pogu Atjaunot.
       </footer>
     </Shell>
   );
@@ -319,6 +288,7 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
         <div className="p-5 sm:p-6">
           <p className="text-muted">
             FIDE {player.fideId}
+            {player.rating ? ` · ${player.rating}` : " · nav reitinga"}
             {player.birthYear ? ` · dz. ${player.birthYear}` : ""}
             {player.club ? ` · ${player.club}` : ""}
           </p>
@@ -383,13 +353,7 @@ function matchesQuery(haystack: string, query: string): boolean {
   return words.every((word) => text.includes(word));
 }
 
-function Board({
-  dossier,
-  notes,
-}: {
-  dossier: Dossier;
-  notes: { notes: Record<string, string>; save: (id: string, text: string) => void };
-}) {
+function Board({ dossier }: { dossier: Dossier }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [year, setYear] = useState("all");
@@ -549,7 +513,6 @@ function Board({
                 games={games}
                 today={dossier.today}
                 startOpen={Boolean(needle) || (index === 0 && !needle)}
-                notes={notes}
               />
             ))}
           </div>
@@ -614,13 +577,11 @@ function TournamentCard({
   today,
   startOpen,
   games,
-  notes,
 }: {
   tournament: Tournament;
   today: string;
   startOpen: boolean;
   games: Game[];
-  notes: { notes: Record<string, string>; save: (id: string, text: string) => void };
 }) {
   const status = dayStatus(tournament.endDate, today);
   const badge = status === "today" ? "Šodien" : status === "upcoming" ? "Gaidāms" : null;
@@ -683,7 +644,7 @@ function TournamentCard({
             <>
               <RoundNote tournament={tournament} />
               <RoundLine games={games} />
-              <GameTable games={games} notes={notes} />
+              <GameTable games={games} />
             </>
           )}
           <a
@@ -701,37 +662,28 @@ function TournamentCard({
   );
 }
 
-function GameTable({
-  games,
-  notes,
-}: {
-  games: Game[];
-  notes: { notes: Record<string, string>; save: (id: string, text: string) => void };
-}) {
+function GameTable({ games }: { games: Game[] }) {
   if (games.length === 0) return <p className="text-sm text-muted">Partijas vēl nav publicētas.</p>;
   return (
     <ol className="grid gap-2">
-      {games.map((game) => {
-        const id = noteId(game);
-        return (
-          <li key={id} className="rounded-xl bg-bg px-3 py-3">
-            <div className="grid grid-cols-[2.5rem_2.75rem_1fr_auto] items-center gap-3">
-              <span className="text-sm text-muted tabular-nums">{game.round}.</span>
-              <PieceMark color={game.color} />
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{game.opponent}</span>
-                <span className="block truncate text-sm text-muted">
-                  {colorName(game.color).toLocaleLowerCase("lv")}
-                  {game.board > 0 ? ` · ${game.board}. galds` : ""}
-                  {game.opponentClub ? ` · ${game.opponentClub}` : ""}
-                </span>
-              </span>
-              <ResultMark result={game.result} />
-            </div>
-            <GameNote id={id} value={notes.notes[id] ?? ""} onSave={notes.save} />
-          </li>
-        );
-      })}
+      {games.map((game) => (
+        <li
+          key={`${game.tournamentId}-${game.round}-${game.opponent}`}
+          className="grid grid-cols-[2.5rem_2.75rem_1fr_auto] items-center gap-3 rounded-xl bg-bg px-3 py-3"
+        >
+          <span className="text-sm text-muted tabular-nums">{game.round}.</span>
+          <PieceMark color={game.color} />
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{game.opponent}</span>
+            <span className="block truncate text-sm text-muted">
+              {colorName(game.color).toLocaleLowerCase("lv")}
+              {game.board > 0 ? ` · ${game.board}. galds` : ""}
+              {game.opponentClub ? ` · ${game.opponentClub}` : ""}
+            </span>
+          </span>
+          <ResultMark result={game.result} />
+        </li>
+      ))}
     </ol>
   );
 }
@@ -973,7 +925,6 @@ function Charts({ dossier }: { dossier: Dossier }) {
         <BalanceBar dossier={dossier} />
         <ColorSplit title="Krāsas" hint="visas partijas" games={games} />
         <ColorSplit title="Krāsas uzvarās" hint="tikai uzvarētās partijas" games={games.filter((game) => game.result === "win")} />
-        {today && today.games.length > 0 ? <TodayColors games={today.games} /> : null}
       </div>
     </section>
   );
@@ -1187,36 +1138,6 @@ function RoundLine({ games }: { games: Game[] }) {
   );
 }
 
-function GameNote({ id, value, onSave }: { id: string; value: string; onSave: (id: string, text: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  if (!editing) {
-    return (
-      <div className="mt-2">
-        {value ? <p className="text-sm">{value}</p> : null}
-        <button type="button" onClick={() => setEditing(true)} className="h-11 text-sm font-medium text-pine">
-          {value ? "Labot piezīmi" : "Piezīme"}
-        </button>
-      </div>
-    );
-  }
-  return (
-    <textarea
-      value={draft}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={() => {
-        onSave(id, draft);
-        setEditing(false);
-      }}
-      rows={2}
-      autoFocus
-      placeholder="Piezīme paliek tikai šajā telefonā"
-      className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none"
-    />
-  );
-}
-
 function summaryText(dossier: Dossier): string {
   const tournament = dossier.tournaments.find((item) => item.endDate === dossier.today) ?? dossier.tournaments[0];
   if (!tournament) return "Nav turnīru.";
@@ -1325,98 +1246,3 @@ function InstallHint() {
   );
 }
 
-function streakStats(games: Game[]) {
-  let run = 0;
-  let best = 0;
-  for (const game of games) {
-    if (game.result === "win") {
-      run += 1;
-      best = Math.max(best, run);
-    } else if (game.score != null) {
-      run = 0;
-    }
-  }
-  let current = 0;
-  for (let index = games.length - 1; index >= 0; index -= 1) {
-    if (games[index]?.result !== "win") break;
-    current += 1;
-  }
-  return { current, best, last: games.slice(-10) };
-}
-
-function Records({ dossier }: { dossier: Dossier }) {
-  const games = timeline(dossier);
-  const { current, best, last } = streakStats(games);
-  const bestPoints = dossier.tournaments.reduce<Tournament | null>((chosen, tournament) => {
-    if (tournament.points == null) return chosen;
-    if (!chosen || (chosen.points ?? 0) < tournament.points) return tournament;
-    return chosen;
-  }, null);
-  const bestPerformance = dossier.tournaments.reduce<Tournament | null>((chosen, tournament) => {
-    if (tournament.performance == null) return chosen;
-    if (!chosen || (chosen.performance ?? 0) < tournament.performance) return tournament;
-    return chosen;
-  }, null);
-  const cards = [
-    { label: "Pašreizējā sērija", value: String(current) },
-    { label: "Garākā sērija", value: String(best) },
-    { label: "Labākā vieta", value: dossier.totals.bestRank ? String(dossier.totals.bestRank) : "—" },
-    { label: "Vairāk punktu", value: bestPoints ? formatPoints(bestPoints.points) : "—" },
-    { label: "Labākais performance", value: bestPerformance?.performance ? String(bestPerformance.performance) : "—" },
-  ];
-  return (
-    <section className="mt-8">
-      <SectionTitle title="Rekordi" hint="sērijas un labākie turnīri" />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {cards.map((card) => (
-          <div key={card.label} className="rounded-2xl border border-line bg-surface px-4 py-4">
-            <p className="text-sm text-muted">{card.label}</p>
-            <p className="mt-1 font-display text-3xl text-pine tabular-nums">{card.value}</p>
-          </div>
-        ))}
-      </div>
-      {last.length > 0 ? (
-        <div className="mt-3 rounded-2xl border border-line bg-surface px-4 py-4">
-          <p className="text-sm text-muted">Pēdējās {last.length} partijas</p>
-          <ol className="mt-3 flex gap-2 overflow-x-auto">
-            {last.map((game) => (
-              <li key={`${game.tournamentId}-${game.round}-${game.opponent}`}>
-                <ResultMark result={game.result} />
-              </li>
-            ))}
-          </ol>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function TodayColors({ games }: { games: Game[] }) {
-  const rows = (["white", "black"] as const).map((color) => {
-    const mine = games.filter((game) => game.color === color);
-    const scored = mine.filter((game) => game.score != null);
-    return {
-      color,
-      count: mine.length,
-      score: scored.reduce((sum, game) => sum + (game.score ?? 0), 0),
-    };
-  });
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Šodienas krāsas</h3>
-      <ul className="mt-3 grid gap-3 text-sm">
-        {rows.map((row) => (
-          <li key={row.color} className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-2">
-              <MiniBoard color={row.color} className="size-10" />
-              {colorName(row.color)}
-            </span>
-            <span className="tabular-nums">
-              {row.count} partijas · {formatPoints(row.score)} punkti
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}

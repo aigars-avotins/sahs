@@ -96,6 +96,7 @@ export type Dossier = {
   player: {
     name: string;
     fideId: string;
+    rating: number | null;
     birthYear: string;
     club: string;
     fed: string;
