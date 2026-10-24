@@ -46,6 +46,16 @@ function freshnessLabel(iso: string): string {
   return `pirms ${Math.floor(hours / 24)} d`;
 }
 
+function pointsLabel(value: number | null): string {
+  const shown = formatPoints(value);
+  if (value == null || !Number.isFinite(value)) return shown;
+  const whole = Math.floor(value + 1e-9);
+  const fraction = value - whole;
+  const half = Math.abs(fraction - 0.5) < 0.01 && whole === 0;
+  const one = Math.abs(fraction) < 0.01 && whole === 1;
+  return `${shown} ${half || one ? "punkts" : "punkti"}`;
+}
+
 function displayTournamentName(name: string, endDate: string): string {
   if (!endDate) return name;
   const iso = endDate.slice(0, 10);
@@ -949,7 +959,7 @@ function OpponentRow({
         <span className="block font-medium tabular-nums">
           {opponent.wins}–{opponent.draws}–{opponent.losses}
         </span>
-        <span className="block text-sm text-muted tabular-nums">{formatPoints(opponent.score)} punkti · {percent}%</span>
+        <span className="block text-sm text-muted tabular-nums">{pointsLabel(opponent.score)} · {percent}%</span>
       </span>
     </button>
   );
@@ -1598,7 +1608,7 @@ function initials(name: string): string {
 function placeLine(tournament: Tournament): string {
   const bits: string[] = [];
   if (tournament.rank) bits.push(`${tournament.rank}. vieta${tournament.fieldSize ? ` no ${tournament.fieldSize}` : ""}`);
-  if (tournament.points != null) bits.push(`${formatPoints(tournament.points)} punkti`);
+  if (tournament.points != null) bits.push(pointsLabel(tournament.points));
   if (!bits.length && tournament.location) bits.push(tournament.location);
   return bits.join(" · ");
 }
@@ -1672,7 +1682,7 @@ function summaryText(dossier: Dossier): string {
   const played = tournament.games.filter((game) => game.score != null).length;
   const when = tournament.endDate === dossier.today ? " šodien" : ` ${formatDate(tournament.endDate)}`;
   const lines = [
-    `${DISPLAY_NAME}${when}: ${formatPoints(tournament.points)} punkti${played ? ` no ${played} partijām` : ""}.`,
+    `${DISPLAY_NAME}${when}: ${pointsLabel(tournament.points)}${played ? ` no ${played} partijām` : ""}.`,
   ];
   if (tournament.rank) lines.push(`${tournament.rank}. vieta${tournament.fieldSize ? ` no ${tournament.fieldSize}` : ""}.`);
   const next = tournament.nextGame;
