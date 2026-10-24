@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#0e6a3e"/>
-  <rect x="4" y="4" width="28" height="28" fill="#f4e4c4"/>
-  <rect x="32" y="32" width="28" height="28" fill="#f4e4c4"/>
-  <polygon points="10,56 54,56 54,62 10,62" fill="#fffaf2"/>
-  <polygon points="12,58 52,58 50,50 36,49 38,40 58,43 62,32 46,26 44,18 40,6 30,16 26,14 18,26 16,38 18,50" fill="#fffaf2"/>
-  <circle cx="44" cy="24" r="2.2" fill="#1c1612"/>
+  <rect width="64" height="64" rx="12" fill="#1e4a38"/>
+  <g transform="translate(10 8) scale(0.98)" fill="none" fill-rule="evenodd" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5">
+    <path fill="#fff" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"/>
+    <path fill="#fff" d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3"/>
+    <path fill="#1e4a38" d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0m5.433-9.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5"/>
+  </g>
 </svg>

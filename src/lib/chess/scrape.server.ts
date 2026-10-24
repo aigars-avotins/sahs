@@ -18,6 +18,22 @@ const UA = "ValtersAssistant/1.0 (personal chess dashboard; +https://kalns.eu)";
 const TTL_MS = 45_000;
 const MAX_TOURNAMENTS = 15;
 
+const EXTRA_TOURNAMENT: SearchHit = {
+  id: "1332728",
+  snr: "4",
+  name: "Avotiņš, Valters",
+  fideId: "0",
+  club: "",
+  fed: "LAT",
+  tournamentName: "V Chess Festival Cēsis 2026 - Turnīrs iesācējiem",
+  endDate: "",
+  rank: null,
+  rounds: null,
+  fieldSize: null,
+  playerHref: "tnr1332728.aspx?lan=1&art=9&snr=4",
+  tournamentHref: "tnr1332728.aspx?lan=1",
+};
+
 type CacheEntry = { at: number; result: Extract<LoadResult, { ok: true }> };
 let cache: CacheEntry | null = null;
 
@@ -102,6 +118,16 @@ async function searchPlayer(): Promise<SearchHit[]> {
   return parseSearchResults(result.html).filter((hit) => hit.fideId === FIDE_ID).slice(0, MAX_TOURNAMENTS);
 }
 
+function withExtraTournaments(hits: SearchHit[]): SearchHit[] {
+  if (hits.some((hit) => hit.id === EXTRA_TOURNAMENT.id)) return hits;
+  return [...hits, EXTRA_TOURNAMENT];
+}
+
+function dateFromStamp(stamp: string): string {
+  const match = stamp.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+}
+
 async function mapPool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let cursor = 0;
@@ -167,7 +193,7 @@ export async function loadDossier(refresh: boolean): Promise<LoadResult> {
     return cache.result;
   }
   try {
-    const hits = await searchPlayer();
+    const hits = withExtraTournaments(await searchPlayer());
     const today = rigaToday();
     const [cards, metas] = await Promise.all([
       mapPool(hits, 4, async (hit) => {
@@ -194,10 +220,34 @@ export async function loadDossier(refresh: boolean): Promise<LoadResult> {
       4,
       ({ hit, index }) => resolveNextGame(hit, cards[index] ?? null, metas[index] ?? null, today),
     );
+    const preparedHits = hits.map((hit, index) => {
+      if (hit.id !== EXTRA_TOURNAMENT.id) return hit;
+      const card = cards[index];
+      const meta = metas[index];
+      return {
+        ...hit,
+        name: card?.name || hit.name,
+        endDate: hit.endDate || meta?.eventDate || dateFromStamp(meta?.lastUpdate ?? ""),
+        rank: card?.rank ?? hit.rank,
+        rounds: card?.games.length || hit.rounds,
+        fieldSize: 34,
+        club: hit.club,
+        fed: "LAT",
+      };
+    });
+    const preparedMetas = metas.map((meta, index) => {
+      if (hits[index]?.id !== EXTRA_TOURNAMENT.id || !meta) return meta;
+      return {
+        ...meta,
+        location: meta.location || "Cēsis",
+        eventDate: meta.eventDate || dateFromStamp(meta.lastUpdate),
+        roundsScheduled: meta.roundsScheduled ?? cards[index]?.games.length ?? null,
+      };
+    });
     const dossier = buildDossier({
-      hits,
+      hits: preparedHits,
       cards,
-      metas,
+      metas: preparedMetas,
       nextGames,
       fetchedAt: new Date().toISOString(),
       today,

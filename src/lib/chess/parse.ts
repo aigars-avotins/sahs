@@ -257,7 +257,9 @@ export function parsePlayerCard(html: string): CardParse {
     info.set(cleanText(match[1]).toLowerCase(), cleanText(match[2]));
   }
   const games: CardParse["games"] = [];
-  for (const row of extractRows(html, "CRng")) {
+  const gameRows = extractRows(html, "CRng");
+  const rows = gameRows.length > 0 ? gameRows : extractRows(html, "CRg");
+  for (const row of rows) {
     const cells = splitCells(row);
     if (cells.length < 10) continue;
     const opponent = cellText(cells[4]);

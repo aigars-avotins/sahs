@@ -103,11 +103,9 @@ export function ValtersPending() {
   return (
     <Shell>
       <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-5 py-16">
-        <p className="text-sm font-medium tracking-wide text-gold uppercase">Šaha asistents</p>
+        <p className="text-sm font-medium tracking-wide text-pine uppercase">Šaha asistents</p>
         <div className="mt-4 flex items-center gap-4">
-          <span className="checker grid size-20 place-items-center rounded-2xl">
-            <Knight tone="white" className="size-14" />
-          </span>
+          <Knight tone="white" className="size-16 rounded-xl bg-pine p-1" />
           <h1 className="text-4xl text-ink">{DISPLAY_NAME}</h1>
         </div>
         <p className="mt-4 max-w-md text-lg text-muted">Nolasa turnīrus un partijas no chess-results.com.</p>
@@ -214,11 +212,9 @@ function TopBar({
   onRefresh: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-10 border-b border-line bg-ivory/95">
+    <header className="sticky top-0 z-10 border-b border-line bg-white/95">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        <span className="checker grid size-10 shrink-0 place-items-center rounded-lg" aria-hidden>
-          <Knight tone="white" className="size-8" />
-        </span>
+        <Knight tone="white" className="size-10 shrink-0 rounded-lg bg-pine p-0.5" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{DISPLAY_NAME}</p>
           <p className="truncate text-sm text-muted">
@@ -242,21 +238,19 @@ function TopBar({
 function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
   const { totals, player } = dossier;
   const stats = [
-    { label: "Turnīri", value: String(totals.tournaments), cls: "bg-pine text-ivory" },
-    { label: "Partijas", value: String(totals.games), cls: "bg-gold text-ink" },
-    { label: "Punkti", value: formatPoints(totals.score), cls: "bg-rose text-ivory" },
-    { label: "Bilance", value: `${totals.wins}–${totals.draws}–${totals.losses}`, cls: "bg-ink text-gold" },
+    { label: "Turnīri", value: String(totals.tournaments) },
+    { label: "Partijas", value: String(totals.games) },
+    { label: "Punkti", value: formatPoints(totals.score) },
+    { label: "Bilance", value: `${totals.wins}–${totals.draws}–${totals.losses}` },
   ];
   return (
     <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-      <div className="overflow-hidden rounded-3xl border-2 border-pine bg-surface">
-        <div className="flex items-center gap-4 bg-pine px-5 py-4 text-ivory">
-          <span className="checker grid size-20 shrink-0 place-items-center rounded-2xl">
-            <Knight tone="white" className="size-16" />
-          </span>
+      <div className="overflow-hidden rounded-3xl border border-line bg-white">
+        <div className="flex items-center gap-4 bg-pine px-5 py-4 text-white">
+          <Knight tone="white" className="size-16 shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-medium tracking-wide text-gold uppercase">Personīgais asistents</p>
-            <h1 className="text-4xl text-ivory sm:text-5xl">{DISPLAY_NAME}</h1>
+            <p className="text-sm font-medium tracking-wide uppercase">Personīgais asistents</p>
+            <h1 className="text-4xl text-white sm:text-5xl">{DISPLAY_NAME}</h1>
           </div>
         </div>
         <div className="p-5 sm:p-6">
@@ -275,7 +269,7 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
             aria-pressed={alerts.enabled}
             className={
               "mt-5 inline-flex h-11 items-center gap-2 rounded-full px-4 font-medium " +
-              (alerts.enabled ? "bg-gold text-ink" : "bg-pine text-ivory")
+              (alerts.enabled ? "border border-pine bg-white text-pine" : "bg-pine text-white")
             }
           >
             {alerts.enabled ? <BellOff className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
@@ -289,9 +283,9 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
       </div>
       <div className="grid grid-cols-2 gap-3">
         {stats.map((stat) => (
-          <div key={stat.label} className={`rounded-2xl px-4 py-4 ${stat.cls}`}>
-            <p className="text-sm opacity-80">{stat.label}</p>
-            <p className="mt-1 font-display text-3xl tabular-nums">{stat.value}</p>
+          <div key={stat.label} className="rounded-2xl border border-line bg-white px-4 py-4">
+            <p className="text-sm text-muted">{stat.label}</p>
+            <p className="mt-1 font-display text-3xl text-pine tabular-nums">{stat.value}</p>
           </div>
         ))}
       </div>
@@ -627,14 +621,14 @@ function NextGameBanner({ tournament }: { tournament: Tournament }) {
   const next = tournament.nextGame;
   if (!next) return null;
   return (
-    <section className="overflow-hidden rounded-3xl bg-pine text-ivory">
+    <section className="overflow-hidden rounded-3xl bg-pine text-white">
       <div className="grid sm:grid-cols-[8.5rem_1fr]">
-        <div className="checker grid place-items-center px-4 py-5">
+        <div className="grid place-items-center bg-white px-4 py-5">
           <Knight tone={next.color === "black" ? "black" : "white"} className="size-28" />
         </div>
         <div className="px-5 py-5 sm:px-6">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-sm font-medium tracking-wide text-gold uppercase">Nākamā partija</p>
+            <p className="text-sm font-medium tracking-wide uppercase">Nākamā partija</p>
             <p className="text-sm tabular-nums">{next.round}. kārta</p>
           </div>
           <div className="mt-3 flex flex-wrap items-end gap-8">
@@ -657,7 +651,7 @@ function NextGameBanner({ tournament }: { tournament: Tournament }) {
             href={next.url}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-flex h-11 items-center gap-2 text-sm font-medium text-gold"
+            className="mt-4 inline-flex h-11 items-center gap-2 text-sm font-medium text-white"
           >
             Izloze chess-results
             <ExternalLink className="size-4" aria-hidden />
@@ -716,96 +710,16 @@ function timeline(dossier: Dossier): Game[] {
 function Charts({ dossier }: { dossier: Dossier }) {
   const games = useMemo(() => timeline(dossier), [dossier]);
   const today = dossier.tournaments.find((tournament) => dayStatus(tournament.endDate, dossier.today) === "today");
-  if (games.length < 2 && !today) return null;
+  if (games.length === 0 && !today) return null;
   return (
     <section className="mt-8">
-      <SectionTitle title="Grafiki" hint="no nolasītajām partijām" />
-      <div className="grid gap-3 lg:grid-cols-5">
-        <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 lg:col-span-3">
-          <h3 className="text-xl">Forma</h3>
-          <p className="mt-1 text-sm text-muted">Punkti pēc katras partijas. Pieskaries punktam.</p>
-          {games.length >= 2 ? <ScoreChart games={games} /> : <p className="mt-4 text-sm text-muted">Vēl par maz partiju.</p>}
-        </div>
-        <div className="grid gap-3 lg:col-span-2">
-          {today && today.games.length > 0 ? <RoundBars tournament={today} /> : null}
-          <BalanceBar dossier={dossier} />
-          <ColorBars games={games} />
-        </div>
+      <SectionTitle title="Grafiki" hint="šodiena, bilance un krāsas" />
+      <div className="grid gap-3 lg:grid-cols-3">
+        {today && today.games.length > 0 ? <RoundBars tournament={today} /> : null}
+        <BalanceBar dossier={dossier} />
+        <ColorBars games={games} />
       </div>
     </section>
-  );
-}
-
-function resultColor(result: GameResult): string {
-  if (result === "win") return "#1e4a38";
-  if (result === "draw") return "#8a6232";
-  if (result === "loss") return "#8c3a32";
-  return "#6e675d";
-}
-
-function ScoreChart({ games }: { games: Game[] }) {
-  const [active, setActive] = useState(games.length - 1);
-  const running: number[] = [];
-  let sum = 0;
-  for (const game of games) {
-    sum += game.score ?? 0;
-    running.push(sum);
-  }
-  const maxY = Math.max(1, ...running);
-  const width = 640;
-  const height = 200;
-  const pad = { l: 32, r: 10, t: 14, b: 18 };
-  const innerW = width - pad.l - pad.r;
-  const innerH = height - pad.t - pad.b;
-  const xAt = (index: number) =>
-    pad.l + (games.length === 1 ? innerW / 2 : (index / (games.length - 1)) * innerW);
-  const yAt = (value: number) => pad.t + innerH - (value / maxY) * innerH;
-  const line = running.map((value, index) => `${xAt(index)},${yAt(value)}`).join(" ");
-  const area = `${pad.l},${yAt(0)} ${line} ${xAt(games.length - 1)},${yAt(0)}`;
-  const ticks = [0, maxY / 2, maxY];
-  const game = games[active];
-  return (
-    <div className="mt-3">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-48 w-full"
-        role="img"
-        aria-label={`Punkti aug līdz ${formatPoints(running[running.length - 1] ?? 0)} pēc ${games.length} partijām.`}
-      >
-        {ticks.map((tick) => (
-          <g key={tick}>
-            <line x1={pad.l} x2={width - pad.r} y1={yAt(tick)} y2={yAt(tick)} stroke="#ddd4c4" strokeWidth="1" />
-            <text x={pad.l - 6} y={yAt(tick) + 4} textAnchor="end" fill="#6e675d" fontSize="11">
-              {formatPoints(tick)}
-            </text>
-          </g>
-        ))}
-        <polygon points={area} fill="#1e4a38" opacity="0.12" />
-        <polyline points={line} fill="none" stroke="#1e4a38" strokeWidth="2" />
-        {games.map((item, index) => (
-          <circle
-            key={`${item.tournamentId}-${item.round}-${item.opponent}`}
-            cx={xAt(index)}
-            cy={yAt(running[index] ?? 0)}
-            r={index === active ? 7 : 4.5}
-            fill={resultColor(item.result)}
-            stroke={index === active ? "#1c1914" : "#fbf8f2"}
-            strokeWidth={index === active ? 2 : 1.5}
-            className="cursor-pointer"
-            onClick={() => setActive(index)}
-          >
-            <title>
-              {item.round}. kārta, {item.opponent}, {item.result === "win" ? "uzvara" : item.result === "draw" ? "neizšķirts" : item.result === "loss" ? "zaudējums" : "bez rezultāta"}
-            </title>
-          </circle>
-        ))}
-      </svg>
-      {game ? (
-        <p className="text-sm text-muted">
-          {formatDate(game.tournamentDate)} · {game.round}. kārta · {game.opponent} · kopā {formatPoints(running[active] ?? 0)}
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -822,7 +736,7 @@ function RoundBars({ tournament }: { tournament: Tournament }) {
           const game = byRound.get(round);
           const score = game?.score;
           const height = score == null ? 8 : Math.max(8, score * 100);
-          const cls = score == null ? "bg-line" : score >= 1 ? "bg-pine" : score > 0 ? "bg-brass" : "bg-loss";
+          const cls = score == null ? "bg-line" : score >= 1 ? "bg-pine" : score > 0 ? "bg-pine-soft" : "bg-loss";
           return (
             <div key={round} className="flex min-w-0 flex-1 flex-col items-center gap-1">
               <div className="flex h-16 w-full items-end">
@@ -833,7 +747,7 @@ function RoundBars({ tournament }: { tournament: Tournament }) {
           );
         })}
       </div>
-      <p className="mt-2 text-sm text-muted">Zaļš — uzvara, brūns — neizšķirts, sarkans — zaudējums.</p>
+      <p className="mt-2 text-sm text-muted">Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums.</p>
     </div>
   );
 }
@@ -843,7 +757,7 @@ function BalanceBar({ dossier }: { dossier: Dossier }) {
   const total = Math.max(scored, 1);
   const parts = [
     { label: "Uzvaras", value: wins, cls: "bg-pine" },
-    { label: "Neizšķirti", value: draws, cls: "bg-brass" },
+    { label: "Neizšķirti", value: draws, cls: "bg-pine-soft" },
     { label: "Zaudējumi", value: losses, cls: "bg-loss" },
   ];
   return (
@@ -891,7 +805,7 @@ function ColorBars({ games }: { games: Game[] }) {
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-bg-deep">
-              <div className={row.color === "white" ? "h-full bg-brass" : "h-full bg-pine"} style={{ width: `${row.percent}%` }} />
+              <div className={row.color === "white" ? "h-full bg-pine-soft" : "h-full bg-pine"} style={{ width: `${row.percent}%` }} />
             </div>
           </li>
         ))}
