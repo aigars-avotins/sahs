@@ -3,16 +3,19 @@
 @theme {
   --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
   --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", serif;
-  --color-bg: #f3efe6;
-  --color-bg-deep: #e7e0d2;
-  --color-surface: #fbf8f2;
-  --color-ink: #1c1914;
-  --color-muted: #6e675d;
-  --color-line: #ddd4c4;
-  --color-pine: #1e4a38;
-  --color-pine-soft: #e4efe8;
-  --color-brass: #8a6232;
-  --color-loss: #8c3a32;
+  --color-bg: #f6ecd8;
+  --color-bg-deep: #ecd4a4;
+  --color-surface: #fffaf0;
+  --color-ivory: #fffaf0;
+  --color-ink: #1c1612;
+  --color-muted: #6f5b45;
+  --color-line: #e4cfa3;
+  --color-pine: #0e6a3e;
+  --color-pine-soft: #d7f5e4;
+  --color-brass: #a16207;
+  --color-gold: #f0b429;
+  --color-loss: #d64545;
+  --color-rose: #d64545;
   --radius: 0.9rem;
 }
 
@@ -23,7 +26,18 @@
   }
 
   body {
-    background: var(--color-bg);
+    background-color: var(--color-bg);
+    background-image:
+      linear-gradient(45deg, rgba(14, 106, 62, 0.08) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(14, 106, 62, 0.08) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(14, 106, 62, 0.08) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(14, 106, 62, 0.08) 75%);
+    background-size: 36px 36px;
+    background-position:
+      0 0,
+      0 18px,
+      18px -18px,
+      -18px 0;
     color: var(--color-ink);
     font-family: var(--font-sans);
   }
@@ -44,4 +58,19 @@
     font-family: var(--font-display);
     text-wrap: balance;
   }
+}
+
+.checker {
+  background-color: #f4e4c4;
+  background-image:
+    linear-gradient(45deg, #1b7a45 25%, transparent 25%),
+    linear-gradient(-45deg, #1b7a45 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1b7a45 75%),
+    linear-gradient(-45deg, transparent 75%, #1b7a45 75%);
+  background-size: 18px 18px;
+  background-position:
+    0 0,
+    0 9px,
+    9px -9px,
+    -9px 0;
 }

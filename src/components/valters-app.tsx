@@ -1,11 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Bell,
+  BellOff,
   ExternalLink,
   MapPin,
   RefreshCw,
   Search,
   Trophy,
 } from "lucide-react";
+import { Knight } from "@/components/knight";
+import {
+  ALERT_KEY,
+  freshPairings,
+  pairingBody,
+  pairingKeys,
+  rememberPairings,
+  shouldWatch,
+  showPairingNotification,
+  storedPairings,
+} from "@/lib/chess/alerts";
 import { getDossier } from "@/lib/chess/dossier";
 import {
   dayStatus,
@@ -17,12 +30,86 @@ import type { Dossier, Game, GameResult, LoadResult, Opponent, PieceColor, Tourn
 
 const DISPLAY_NAME = "Valters Avotiņš";
 
+type AlertState = {
+  enabled: boolean;
+  note: string;
+  toggle: () => void;
+};
+
+function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<void>): AlertState {
+  const [enabled, setEnabled] = useState(false);
+  const [note, setNote] = useState("");
+  const signature = dossier ? pairingKeys(dossier).join("\n") : "";
+  const watching = dossier ? shouldWatch(dossier) : false;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof Notification === "undefined") return;
+    setEnabled(localStorage.getItem(ALERT_KEY) === "1" && Notification.permission === "granted");
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !watching) return;
+    const id = window.setInterval(() => {
+      void refreshQuiet();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [enabled, watching, refreshQuiet]);
+
+  useEffect(() => {
+    if (!enabled || !dossier) return;
+    const current = pairingKeys(dossier);
+    const fresh = freshPairings(storedPairings(), current);
+    if (storedPairings() == null) {
+      rememberPairings(current);
+      return;
+    }
+    rememberPairings(current);
+    for (const key of fresh) void showPairingNotification(pairingBody(key));
+  }, [enabled, signature, dossier]);
+
+  async function toggle() {
+    if (enabled) {
+      localStorage.removeItem(ALERT_KEY);
+      setEnabled(false);
+      setNote("Paziņojumi izslēgti.");
+      return;
+    }
+    if (typeof Notification === "undefined") {
+      setNote("Šis pārlūks nepaziņo. Atver Chrome vai pievieno lapu iPhone sākuma ekrānam.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      localStorage.removeItem(ALERT_KEY);
+      setEnabled(false);
+      setNote("Paziņojumi ir bloķēti. Atļauj tos pārlūka iestatījumos.");
+      return;
+    }
+    try {
+      if ("serviceWorker" in navigator) await navigator.serviceWorker.register("/sw.js");
+    } catch {
+      /* page notification still works */
+    }
+    localStorage.setItem(ALERT_KEY, "1");
+    if (dossier) rememberPairings(pairingKeys(dossier));
+    setEnabled(true);
+    setNote("Ieslēgts. Kamēr lapa ir atvērta, telefons paziņos par jaunu galdiņu.");
+  }
+
+  return { enabled, note, toggle };
+}
+
 export function ValtersPending() {
   return (
     <Shell>
       <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-5 py-16">
-        <p className="text-sm font-medium tracking-wide text-pine uppercase">Šaha asistents</p>
-        <h1 className="mt-2 text-4xl text-ink">{DISPLAY_NAME}</h1>
+        <p className="text-sm font-medium tracking-wide text-gold uppercase">Šaha asistents</p>
+        <div className="mt-4 flex items-center gap-4">
+          <span className="checker grid size-20 place-items-center rounded-2xl">
+            <Knight tone="white" className="size-14" />
+          </span>
+          <h1 className="text-4xl text-ink">{DISPLAY_NAME}</h1>
+        </div>
         <p className="mt-4 max-w-md text-lg text-muted">Nolasa turnīrus un partijas no chess-results.com.</p>
       </div>
     </Shell>
@@ -33,8 +120,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
   const [result, setResult] = useState(initial);
   const [loading, setLoading] = useState(false);
 
-  async function refresh() {
-    setLoading(true);
+  const refreshQuiet = useCallback(async () => {
     try {
       setResult(await getDossier({ data: { refresh: true } }));
     } catch (error) {
@@ -44,10 +130,19 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
           ? { ...current, stale: true, warning: message }
           : { ok: false, error: message },
       );
+    }
+  }, []);
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      await refreshQuiet();
     } finally {
       setLoading(false);
     }
   }
+
+  const alerts = usePairingAlerts(result.ok ? result.dossier : null, refreshQuiet);
 
   if (!result.ok) {
     return (
@@ -84,7 +179,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
             {result.dossier.partialNote}
           </p>
         ) : null}
-        <Overview dossier={result.dossier} />
+        <Overview dossier={result.dossier} alerts={alerts} />
         <NextGames dossier={result.dossier} />
         <Charts dossier={result.dossier} />
         <Board dossier={result.dossier} />
@@ -119,13 +214,10 @@ function TopBar({
   onRefresh: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-10 border-b border-line bg-bg/95">
+    <header className="sticky top-0 z-10 border-b border-line bg-ivory/95">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        <span className="grid size-9 shrink-0 grid-cols-2 overflow-hidden rounded-md border border-line" aria-hidden>
-          <span className="bg-pine" />
-          <span className="bg-surface" />
-          <span className="bg-surface" />
-          <span className="bg-pine" />
+        <span className="checker grid size-10 shrink-0 place-items-center rounded-lg" aria-hidden>
+          <Knight tone="white" className="size-8" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{DISPLAY_NAME}</p>
@@ -147,33 +239,58 @@ function TopBar({
   );
 }
 
-function Overview({ dossier }: { dossier: Dossier }) {
+function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
   const { totals, player } = dossier;
   const stats = [
-    { label: "Turnīri", value: String(totals.tournaments) },
-    { label: "Partijas", value: String(totals.games) },
-    { label: "Punkti", value: formatPoints(totals.score) },
-    { label: "Bilance", value: `${totals.wins}–${totals.draws}–${totals.losses}` },
+    { label: "Turnīri", value: String(totals.tournaments), cls: "bg-pine text-ivory" },
+    { label: "Partijas", value: String(totals.games), cls: "bg-gold text-ink" },
+    { label: "Punkti", value: formatPoints(totals.score), cls: "bg-rose text-ivory" },
+    { label: "Bilance", value: `${totals.wins}–${totals.draws}–${totals.losses}`, cls: "bg-ink text-gold" },
   ];
   return (
     <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-      <div className="rounded-2xl border border-line bg-surface p-5 sm:p-7">
-        <p className="text-sm font-medium tracking-wide text-pine uppercase">Personīgais asistents</p>
-        <h1 className="mt-2 text-4xl sm:text-5xl">{DISPLAY_NAME}</h1>
-        <p className="mt-3 text-muted">
-          FIDE {player.fideId}
-          {player.birthYear ? ` · dz. ${player.birthYear}` : ""}
-          {player.club ? ` · ${player.club}` : ""}
-        </p>
-        <p className="mt-4 max-w-xl text-pretty text-lg">
-          Ar ko spēlēts, cik reižu, kā veicies un kur.
-          {totals.bestRank ? ` Labākā vieta — ${totals.bestRank}.` : ""}
-        </p>
+      <div className="overflow-hidden rounded-3xl border-2 border-pine bg-surface">
+        <div className="flex items-center gap-4 bg-pine px-5 py-4 text-ivory">
+          <span className="checker grid size-20 shrink-0 place-items-center rounded-2xl">
+            <Knight tone="white" className="size-16" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium tracking-wide text-gold uppercase">Personīgais asistents</p>
+            <h1 className="text-4xl text-ivory sm:text-5xl">{DISPLAY_NAME}</h1>
+          </div>
+        </div>
+        <div className="p-5 sm:p-6">
+          <p className="text-muted">
+            FIDE {player.fideId}
+            {player.birthYear ? ` · dz. ${player.birthYear}` : ""}
+            {player.club ? ` · ${player.club}` : ""}
+          </p>
+          <p className="mt-3 max-w-xl text-pretty text-lg">
+            Ar ko spēlēts, cik reižu, kā veicies un kur.
+            {totals.bestRank ? ` Labākā vieta — ${totals.bestRank}.` : ""}
+          </p>
+          <button
+            type="button"
+            onClick={() => void alerts.toggle()}
+            aria-pressed={alerts.enabled}
+            className={
+              "mt-5 inline-flex h-11 items-center gap-2 rounded-full px-4 font-medium " +
+              (alerts.enabled ? "bg-gold text-ink" : "bg-pine text-ivory")
+            }
+          >
+            {alerts.enabled ? <BellOff className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
+            {alerts.enabled ? "Paziņojumi ieslēgti" : "Paziņot telefonā"}
+          </button>
+          <p className="mt-2 max-w-md text-sm text-muted">
+            {alerts.note ||
+              "Ieslēdz, un telefons paziņos, kad chess-results publicēs nākamo galdiņu. Lapa jātur atvērta."}
+          </p>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-2xl border border-line bg-surface px-4 py-4">
-            <p className="text-sm text-muted">{stat.label}</p>
+          <div key={stat.label} className={`rounded-2xl px-4 py-4 ${stat.cls}`}>
+            <p className="text-sm opacity-80">{stat.label}</p>
             <p className="mt-1 font-display text-3xl tabular-nums">{stat.value}</p>
           </div>
         ))}
@@ -456,13 +573,7 @@ function ColorLabel({ color }: { color: PieceColor }) {
   if (color === "unknown") return <span>krāsa nav zināma</span>;
   return (
     <span className="inline-flex items-center gap-1">
-      <span
-        className={
-          "inline-block size-2.5 rounded-sm border border-ink " +
-          (color === "white" ? "bg-surface" : "bg-ink")
-        }
-        aria-hidden
-      />
+      <Knight tone={color === "white" ? "white" : "black"} className="size-4" />
       {color === "white" ? "baltie" : "melnie"}
     </span>
   );
@@ -512,57 +623,47 @@ function colorName(color: PieceColor): string {
   return "Krāsa vēl nav zināma";
 }
 
-function ColorSwatch({ color, light }: { color: PieceColor; light?: boolean }) {
-  const white = color !== "black";
-  return (
-    <span
-      className={
-        "inline-block size-5 rounded-sm border " +
-        (light ? "border-surface " : "border-ink ") +
-        (white ? (light ? "bg-surface" : "bg-surface") : "bg-ink")
-      }
-      aria-hidden
-    />
-  );
-}
-
 function NextGameBanner({ tournament }: { tournament: Tournament }) {
   const next = tournament.nextGame;
   if (!next) return null;
   return (
-    <section className="rounded-2xl bg-pine px-5 py-5 text-surface sm:px-6">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm font-medium tracking-wide uppercase">Nākamā partija</p>
-        <p className="text-sm tabular-nums">{next.round}. kārta</p>
-      </div>
-      <div className="mt-4 flex flex-wrap items-end gap-8">
-        <div>
-          <p className="text-sm text-pine-soft">Galdiņš</p>
-          <p className="font-display text-6xl leading-none tabular-nums">{next.board > 0 ? next.board : "—"}</p>
+    <section className="overflow-hidden rounded-3xl bg-pine text-ivory">
+      <div className="grid sm:grid-cols-[8.5rem_1fr]">
+        <div className="checker grid place-items-center px-4 py-5">
+          <Knight tone={next.color === "black" ? "black" : "white"} className="size-28" />
         </div>
-        <div>
-          <p className="text-sm text-pine-soft">Krāsa</p>
-          <p className="mt-2 flex items-center gap-2 font-display text-3xl">
-            <ColorSwatch color={next.color} light />
-            {colorName(next.color)}
+        <div className="px-5 py-5 sm:px-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-sm font-medium tracking-wide text-gold uppercase">Nākamā partija</p>
+            <p className="text-sm tabular-nums">{next.round}. kārta</p>
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-8">
+            <div>
+              <p className="text-sm text-pine-soft">Galdiņš</p>
+              <p className="font-display text-6xl leading-none tabular-nums">{next.board > 0 ? next.board : "—"}</p>
+            </div>
+            <div>
+              <p className="text-sm text-pine-soft">Krāsa</p>
+              <p className="mt-2 font-display text-3xl">{colorName(next.color)}</p>
+            </div>
+          </div>
+          <p className="mt-4 text-lg">pret {next.opponent}</p>
+          <p className="mt-1 text-sm text-pine-soft">
+            {next.opponentPoints != null ? `${formatPoints(next.opponentPoints)} punkti pirms partijas` : null}
+            {next.opponentPoints != null && tournament.location ? " · " : ""}
+            {tournament.location || tournament.name}
           </p>
+          <a
+            href={next.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex h-11 items-center gap-2 text-sm font-medium text-gold"
+          >
+            Izloze chess-results
+            <ExternalLink className="size-4" aria-hidden />
+          </a>
         </div>
       </div>
-      <p className="mt-5 text-lg">pret {next.opponent}</p>
-      <p className="mt-1 text-sm text-pine-soft">
-        {next.opponentPoints != null ? `${formatPoints(next.opponentPoints)} punkti pirms partijas` : null}
-        {next.opponentPoints != null && tournament.location ? " · " : ""}
-        {tournament.location || tournament.name}
-      </p>
-      <a
-        href={next.url}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 inline-flex h-11 items-center gap-2 text-sm font-medium"
-      >
-        Izloze chess-results
-        <ExternalLink className="size-4" aria-hidden />
-      </a>
     </section>
   );
 }
@@ -782,7 +883,7 @@ function ColorBars({ games }: { games: Game[] }) {
           <li key={row.color}>
             <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
               <span className="inline-flex items-center gap-2">
-                <ColorSwatch color={row.color} />
+                <Knight tone={row.color} className="size-5" />
                 {colorName(row.color)}
               </span>
               <span className="tabular-nums text-muted">
