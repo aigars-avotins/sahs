@@ -790,30 +790,41 @@ function BalanceBar({ dossier }: { dossier: Dossier }) {
 }
 
 function ColorBars({ games }: { games: Game[] }) {
-  const rows = (["white", "black"] as const).map((color) => {
-    const played = games.filter((game) => game.color === color && game.score != null);
-    const score = played.reduce((sum, game) => sum + (game.score ?? 0), 0);
-    const percent = played.length ? Math.round((score / played.length) * 100) : 0;
-    return { color, played: played.length, score, percent };
-  });
+  const total = games.length;
+  const counts = {
+    white: games.filter((game) => game.color === "white").length,
+    black: games.filter((game) => game.color === "black").length,
+    unknown: games.filter((game) => game.color === "unknown").length,
+  };
+  const parts = [
+    { key: "white" as const, label: "Baltie", value: counts.white, cls: "bg-white shadow-[inset_0_0_0_1px_#1e4a38]" },
+    { key: "black" as const, label: "Melnie", value: counts.black, cls: "bg-pine" },
+    { key: "unknown" as const, label: "Krāsa nav norādīta", value: counts.unknown, cls: "bg-line" },
+  ].filter((part) => part.value > 0);
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Krāsas</h3>
-      <ul className="mt-3 grid gap-3">
-        {rows.map((row) => (
-          <li key={row.color}>
-            <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-              <span className="inline-flex items-center gap-2">
-                <Knight tone={row.color} className="size-5" />
-                {colorName(row.color)}
-              </span>
-              <span className="tabular-nums text-muted">
-                {formatPoints(row.score)}/{row.played} · {row.percent}%
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-bg-deep">
-              <div className={row.color === "white" ? "h-full bg-pine-soft" : "h-full bg-pine"} style={{ width: `${row.percent}%` }} />
-            </div>
+      <p className="mt-1 text-sm text-muted">{total} partijas</p>
+      <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-bg-deep">
+        {parts.map((part) => (
+          <div key={part.key} className={part.cls} style={{ width: `${total ? (part.value / total) * 100 : 0}%` }} />
+        ))}
+      </div>
+      <ul className="mt-3 grid gap-2 text-sm">
+        {parts.map((part) => (
+          <li key={part.key} className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2">
+              {part.key === "unknown" ? (
+                <span className="size-5 rounded-sm bg-line" />
+              ) : (
+                <Knight tone={part.key} className="size-5" />
+              )}
+              {part.label}
+            </span>
+            <span className="tabular-nums">
+              {part.value}
+              <span className="text-muted"> no {total}</span>
+            </span>
           </li>
         ))}
       </ul>
