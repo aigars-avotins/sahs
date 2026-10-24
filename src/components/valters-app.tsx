@@ -201,7 +201,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
         <a className="underline decoration-line underline-offset-4" href="https://chess-results.com/" target="_blank" rel="noreferrer">
           chess-results.com
         </a>
-        . Atsvaidzini turnīra laikā ar pogu Atjaunot.
+        . Atsvaidzini turnīra laikā ar pogu Atjaunot. Atjaunots {formatStamp(result.dossier.fetchedAt)}.
       </footer>
     </Shell>
   );
@@ -256,10 +256,7 @@ function TopBar({
             {DISPLAY_NAME}
             <span className="font-normal text-muted"> · FIDE {dossier.player.fideId}</span>
           </p>
-          <p className="truncate text-sm text-muted">
-            {dossier.player.club ? `${dossier.player.club} · ` : ""}
-            Atjaunots {formatStamp(dossier.fetchedAt)}
-          </p>
+          {dossier.player.club ? <p className="truncate text-sm text-muted">{dossier.player.club}</p> : null}
         </div>
         <button
           type="button"
