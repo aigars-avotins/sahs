@@ -281,39 +281,43 @@ function TopBar({
   const stamped = formatStamp(dossier.fetchedAt);
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-6">
-        <Knight tone="white" className="size-10 shrink-0 rounded-lg bg-pine p-0.5" />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl sm:text-3xl">{DISPLAY_NAME}</h1>
+      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <Knight tone="white" className="mt-0.5 size-10 shrink-0 rounded-lg bg-pine p-0.5" />
+          <div className="min-w-0">
+            <h1 className="text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
+            <p className="mt-1 text-sm leading-snug text-muted">
+              FIDE {dossier.player.fideId}
+              {dossier.player.club ? ` · ${dossier.player.club}` : ""}
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-pressed={dark}
-          aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
-          className="inline-flex size-11 items-center justify-center rounded-full border border-line bg-surface"
-        >
-          {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
-        </button>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex shrink-0 items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            aria-busy={loading}
-            className="inline-flex h-11 items-center gap-2 rounded-full bg-pine px-4 font-medium text-surface disabled:opacity-60"
+            onClick={toggleTheme}
+            aria-pressed={dark}
+            aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
+            className="inline-flex size-11 items-center justify-center rounded-full border border-line bg-surface"
           >
-            <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
-            <span>{loading ? "Atjauno…" : "Atjaunot"}</span>
+            {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
           </button>
-          <p className="text-xs text-muted" title={stamped ? `Atjaunots ${stamped}` : undefined}>
-            {loading ? "Notiek" : `Dati ${fresh}`}
-          </p>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              aria-busy={loading}
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-pine px-4 font-medium text-surface disabled:opacity-60"
+            >
+              <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
+              <span>{loading ? "Atjauno…" : "Atjaunot"}</span>
+            </button>
+            <p className="text-xs text-muted" title={stamped ? `Atjaunots ${stamped}` : undefined}>
+              {loading ? "Notiek" : `Dati ${fresh}`}
+            </p>
+          </div>
         </div>
-        <p className="w-full truncate text-sm text-muted">
-          FIDE {dossier.player.fideId}
-          {dossier.player.club ? ` · ${dossier.player.club}` : ""}
-        </p>
       </div>
       {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
       <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 sm:px-4">
