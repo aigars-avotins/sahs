@@ -315,7 +315,7 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
       </button>
       <p className="mt-2 max-w-md text-sm text-muted">
         {alerts.note ||
-          "Ieslēdz, un telefons paziņos un iezvanīs, kad chess-results publicēs nākamo galdiņu. Lapa jātur atvērta."}
+          "Ja ieslēgsi paziņojumus, telefons paziņos, kad chess-results publicēs nākamo pretinieku. Lapa jātur atvērta."}
       </p>
       <CopySummary dossier={dossier} />
     </section>
