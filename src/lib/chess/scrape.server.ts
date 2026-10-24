@@ -119,6 +119,42 @@ async function searchPlayer(source: SourceContext): Promise<SearchHit[]> {
   });
 }
 
+function formField(html: string, name: string): string {
+  const tag = html.match(new RegExp(`<input[^>]*name="${name}"[^>]*>`, "i"))?.[0] || "";
+  return decodeEntities(tag.match(/value="([^"]*)"/)?.[1] || "");
+}
+
+const DETAILS_BUTTON = /(?:id|name)=["'](?:ctl00_P1_|ctl00\$P1\$)?cb_alleDetails["']/i;
+
+async function tournamentMetaHtml(source: SourceContext, id: string): Promise<string> {
+  const jar = new Map<string, string>();
+  const page = await request(source, `https://chess-results.com/tnr${id}.aspx?lan=1&turdet=YES`, jar);
+  if (!DETAILS_BUTTON.test(page.html) || !formField(page.html, "__VIEWSTATE")) return page.html;
+  try {
+    const body = new URLSearchParams({
+      __EVENTTARGET: "",
+      __EVENTARGUMENT: "",
+      __VIEWSTATE: formField(page.html, "__VIEWSTATE"),
+      __VIEWSTATEGENERATOR: formField(page.html, "__VIEWSTATEGENERATOR"),
+      __EVENTVALIDATION: formField(page.html, "__EVENTVALIDATION"),
+      cb_alleDetails: "Show tournament details",
+    });
+    const opened = await request(source, page.url, jar, {
+      method: "POST",
+      body,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Referer: page.url,
+        Origin: new URL(page.url).origin,
+      },
+    });
+    if (/Number of rounds\s+\d+/i.test(opened.html) || /\bDate\s+\d{4}\/\d{2}\/\d{2}/i.test(opened.html)) return opened.html;
+  } catch {
+    // The closed page still has the games; missing place and date stay marked hidden.
+  }
+  return page.html;
+}
+
 export async function scrapeDossier(source: SourceContext): Promise<Extract<LoadResult, { ok: true }>> {
   const hits = await searchPlayer(source);
   const today = rigaToday();
@@ -126,7 +162,7 @@ export async function scrapeDossier(source: SourceContext): Promise<Extract<Load
   const preparedHits: SearchHit[] = [];
   // Serial source access, shared memo entries: historical pages are never fetched every refresh.
   for (const hit of hits) {
-    const meta = await source.memo(`meta:${hit.id}`, META_TTL, async () => parseTournamentMeta((await request(source, `https://chess-results.com/tnr${hit.id}.aspx?lan=1&turdet=YES`)).html));
+    const meta = await source.memo(`meta:open:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)));
     meta.location ||= EXTRA_PLACE[hit.id] || "";
     const endDate = meta.eventDate || hit.endDate;
     const active = meta.startDate <= today && endDate >= today;
