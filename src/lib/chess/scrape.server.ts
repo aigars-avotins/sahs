@@ -148,7 +148,8 @@ async function tournamentMetaHtml(source: SourceContext, id: string): Promise<st
         Origin: new URL(page.url).origin,
       },
     });
-    if (/Number of rounds\s+\d+/i.test(opened.html) || /\bDate\s+\d{4}\/\d{2}\/\d{2}/i.test(opened.html)) return opened.html;
+    const text = opened.html.replace(/<[^>]+>/g, " ");
+    if (!DETAILS_BUTTON.test(opened.html) || /Number of rounds\s+\d+/i.test(text) || /\bDate\s+\d{4}\/\d{2}\/\d{2}/i.test(text)) return opened.html;
   } catch {
     // The closed page still has the games; missing place and date stay marked hidden.
   }
@@ -175,7 +176,7 @@ export async function scrapeDossier(source: SourceContext): Promise<Extract<Load
   const preparedHits: SearchHit[] = [];
   // Serial source access, shared memo entries: historical pages are never fetched every refresh.
   for (const hit of hits) {
-    const meta = await source.memo(`meta:open:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)));
+    const meta = await source.memo(`meta:shown:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)));
     meta.location ||= EXTRA_PLACE[hit.id] || "";
     if (!hit.fieldSize && !meta.fieldSize) {
       const size = await source.memo(`field:${hit.id}`, HISTORY_TTL, () => participantCount(source, hit.id));
