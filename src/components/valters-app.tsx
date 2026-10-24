@@ -590,7 +590,12 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
     }
     return rows.sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"));
   }, [opponents]);
-  const active = repeats.find((opponent) => opponent.key === selected) ?? opponents.find((opponent) => opponent.key === selected) ?? null;
+  const repeatNames = useMemo(() => new Set(repeats.map((opponent) => fold(opponent.name))), [repeats]);
+  const onceOpponents = useMemo(
+    () => orderedOpponents.filter((opponent) => !repeatNames.has(fold(opponent.name))),
+    [orderedOpponents, repeatNames],
+  );
+  const active = repeats.find((opponent) => opponent.key === selected) ?? onceOpponents.find((opponent) => opponent.key === selected) ?? null;
 
   return (
     <div className="grid gap-6">
@@ -652,9 +657,9 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
               ? tournaments.length === 1
                 ? "1 turnīrs"
                 : `${tournaments.length} turnīri`
-              : opponents.length === 1
+              : onceOpponents.length + repeats.length === 1
                 ? "1 pretinieks"
-                : `${opponents.length} pretinieki`}
+                : `${onceOpponents.length + repeats.length} pretinieki`}
           </p>
         ) : null}
       </div>
@@ -698,14 +703,12 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
               </ul>
             </section>
           ) : null}
-          <section>
-            <SectionTitle title="Pretinieki" hint="partijas, bilance, punkti un punktu īpatsvars" />
-            <p className="mb-2 text-sm text-muted">Uzvaras / neizšķirti / zaudējumi</p>
-            {orderedOpponents.length === 0 ? (
-              <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
-            ) : (
+          {onceOpponents.length > 0 ? (
+            <section>
+              <SectionTitle title="Pretinieki" hint="partijas, bilance, punkti un punktu īpatsvars" />
+              <p className="mb-2 text-sm text-muted">Uzvaras / neizšķirti / zaudējumi</p>
               <ul className="grid gap-1.5">
-                {orderedOpponents.map((opponent) => (
+                {onceOpponents.map((opponent) => (
                   <li key={opponent.key}>
                     <OpponentRow
                       opponent={opponent}
@@ -715,9 +718,11 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
                   </li>
                 ))}
               </ul>
-            )}
-            {active ? <Meetings opponent={active} /> : null}
-          </section>
+            </section>
+          ) : repeats.length === 0 ? (
+            <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
+          ) : null}
+          {active ? <Meetings opponent={active} /> : null}
         </>
       )}
     </div>
