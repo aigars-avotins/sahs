@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vercel/
+.tanstack/
+.grok/
+screenshots/
+artifacts/
+*.log
+.DS_Store
