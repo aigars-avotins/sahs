@@ -298,27 +298,64 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
   );
 }
 
+function fold(value: string): string {
+  return value.toLocaleLowerCase("lv").replace(/[āčēģīķļņšūžŗ]/g, (letter) => {
+    const map: Record<string, string> = {
+      ā: "a",
+      č: "c",
+      ē: "e",
+      ģ: "g",
+      ī: "i",
+      ķ: "k",
+      ļ: "l",
+      ņ: "n",
+      š: "s",
+      ū: "u",
+      ž: "z",
+      ŗ: "r",
+    };
+    return map[letter] ?? letter;
+  });
+}
+
+function matchesQuery(haystack: string, query: string): boolean {
+  const words = fold(query).split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const text = fold(haystack);
+  return words.every((word) => text.includes(word));
+}
+
 function Board({ dossier }: { dossier: Dossier }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
-  const needle = query.trim().toLocaleLowerCase("lv");
+  const needle = query.trim();
 
   const tournaments = useMemo(() => {
-    if (!needle) return dossier.tournaments;
-    return dossier.tournaments.filter((tournament) =>
-      [tournament.name, tournament.location, tournament.organizer, ...tournament.games.map((game) => game.opponent)]
-        .join(" ")
-        .toLocaleLowerCase("lv")
-        .includes(needle),
-    );
+    if (!needle) return dossier.tournaments.map((tournament) => ({ tournament, games: tournament.games }));
+    return dossier.tournaments.flatMap((tournament) => {
+      const about = [tournament.name, tournament.location, tournament.organizer, tournament.timeControl].join(" ");
+      if (matchesQuery(about, needle)) return [{ tournament, games: tournament.games }];
+      const games = tournament.games.filter((game) =>
+        matchesQuery([game.opponent, game.opponentClub, game.opponentFed, game.location].join(" "), needle),
+      );
+      return games.length > 0 ? [{ tournament, games }] : [];
+    });
   }, [dossier.tournaments, needle]);
 
   const opponents = useMemo(() => {
     if (!needle) return dossier.opponents;
     return dossier.opponents.filter((opponent) =>
-      `${opponent.name} ${opponent.club} ${opponent.lastTournament} ${opponent.lastLocation}`
-        .toLocaleLowerCase("lv")
-        .includes(needle),
+      matchesQuery(
+        [
+          opponent.name,
+          opponent.club,
+          opponent.fed,
+          opponent.lastTournament,
+          opponent.lastLocation,
+          ...opponent.meetings.flatMap((game) => [game.tournamentName, game.location, game.opponentClub]),
+        ].join(" "),
+        needle,
+      ),
     );
   }, [dossier.opponents, needle]);
 
@@ -326,15 +363,25 @@ function Board({ dossier }: { dossier: Dossier }) {
 
   return (
     <div className="mt-8 grid gap-8">
-      <label className="flex h-12 items-center gap-3 rounded-full border border-line bg-surface px-4">
-        <Search className="size-4 text-muted" aria-hidden />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Meklēt pretinieku, klubu vai turnīru"
-          className="w-full bg-transparent text-base outline-none placeholder:text-muted"
-        />
-      </label>
+      <div>
+        <label className="flex h-12 items-center gap-3 rounded-full border border-line bg-white px-4">
+          <Search className="size-4 text-muted" aria-hidden />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Meklēt pretinieku, klubu vai turnīru"
+            autoComplete="off"
+            enterKeyHint="search"
+            className="w-full bg-transparent text-base outline-none placeholder:text-muted"
+          />
+        </label>
+        {needle ? (
+          <p className="mt-2 px-4 text-sm text-muted">
+            {tournaments.length === 1 ? "1 turnīrs" : `${tournaments.length} turnīri`} ·{" "}
+            {opponents.length === 1 ? "1 pretinieks" : `${opponents.length} pretinieki`}
+          </p>
+        ) : null}
+      </div>
 
       <section>
         <SectionTitle title="Turnīri" hint={`${tournaments.length} no ${dossier.tournaments.length}`} />
@@ -342,12 +389,13 @@ function Board({ dossier }: { dossier: Dossier }) {
           <Empty>Nav turnīru, kas atbilst meklējumam.</Empty>
         ) : (
           <div className="grid gap-3">
-            {tournaments.map((tournament, index) => (
+            {tournaments.map(({ tournament, games }, index) => (
               <TournamentCard
                 key={tournament.id}
                 tournament={tournament}
+                games={games}
                 today={dossier.today}
-                startOpen={index === 0 && !needle}
+                startOpen={Boolean(needle) || (index === 0 && !needle)}
               />
             ))}
           </div>
@@ -355,9 +403,9 @@ function Board({ dossier }: { dossier: Dossier }) {
       </section>
 
       <section>
-        <SectionTitle title="Pretinieki" hint="cik reižu un kā veicies" />
+        <SectionTitle title="Pretinieki" hint={needle ? `${opponents.length} atbilst` : "cik reižu un kā veicies"} />
         {opponents.length === 0 ? (
-          <Empty>Vēl nav pretinieku šajos turnīros.</Empty>
+          <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
         ) : (
           <ul className="grid gap-2">
             {opponents.map((opponent) => (
@@ -394,16 +442,18 @@ function TournamentCard({
   tournament,
   today,
   startOpen,
+  games,
 }: {
   tournament: Tournament;
   today: string;
   startOpen: boolean;
+  games: Game[];
 }) {
   const status = dayStatus(tournament.endDate, today);
   const badge = status === "today" ? "Šodien" : status === "upcoming" ? "Gaidāms" : null;
   const [opened, setOpened] = useState(startOpen);
   useEffect(() => {
-    if (startOpen) setOpened(true);
+    setOpened(startOpen);
   }, [startOpen]);
   return (
     <article className="min-w-0 rounded-2xl border border-line bg-surface">
@@ -456,7 +506,7 @@ function TournamentCard({
           ) : (
             <>
               <RoundNote tournament={tournament} />
-              <GameTable games={tournament.games} />
+              <GameTable games={games} />
             </>
           )}
           <a
