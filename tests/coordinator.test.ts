@@ -17,7 +17,7 @@ function harness() {
     await source.memo("meta:1", HISTORY_TTL, async () => { await source.request("https://chess-results.com/history"); return 2; });
     return {ok:true,dossier:dossier(),stale:false,warning:null};
   };
-  return {create,job,times,statuses,advance:(ms:number)=>{clock+=ms;},state:()=>saved};
+  return {create,job,times,statuses,advance:(ms:number)=>{clock+=ms;},state:()=>saved,setState:(state:CacheState)=>{saved=state;}};
 }
 test("many visitors share one job; manual/automatic loads cannot bypass cooldown", async () => {
   const h=harness(); const c=h.create(); const results=await Promise.all(Array.from({length:20},()=>c.load(h.job)));
@@ -46,10 +46,23 @@ test("invalid parsed pages never replace persistent good data; failed cold start
   assert.equal(bad.ok && bad.stale,true);assert.equal(h.state()!.entries['card:1'].value,1);
   const cold=harness();cold.statuses.push([403,{}]);await cold.create().load(cold.job);await cold.create().load(cold.job);assert.equal(cold.times.length,1);
 });
-test("idle history does not cause five-minute source polling",async()=>{
+test("idle history does not cause minute-by-minute source polling",async()=>{
   const h=harness();const idle=async(source:SourceContext):Promise<Success>=>{
     await source.request('https://chess-results.com/history');const data=dossier();data.tournaments.forEach(t=>{t.startDate='2025-01-01';t.endDate='2025-01-01';});return {ok:true,dossier:data,stale:false,warning:null};
   };
   await h.create().load(idle);h.advance(ACTIVE_TTL+1);await h.create().load(idle);assert.equal(h.times.length,1);
   h.advance(SEARCH_TTL);await h.create().load(idle);assert.equal(h.times.length,2);
+});
+test("active source checks run every minute, independently of visitors",async()=>{
+  assert.equal(ACTIVE_TTL,60_000);const h=harness();await h.create().load(h.job);h.advance(59_000);await h.create().load(h.job);assert.equal(h.times.length,3);h.advance(1_001);await h.create().load(h.job);assert.equal(h.times.length,4);
+});
+test("first failure retries after one minute and retains the cause through restart",async()=>{
+  const h=harness();h.statuses.push([500,{}]);const failed=await h.create().load(h.job);assert.equal(failed.ok,false);
+  const cached=await h.create().load(h.job);assert.equal(cached.ok,false);assert.match(!cached.ok ? cached.error : '',/500/);
+  assert.equal(h.times.length,1);h.advance(60_001);const recovered=await h.create().load(h.job);assert.equal(recovered.ok,true);
+});
+test("legacy first-error guard is shortened, but an old long block is preserved",async()=>{
+  const h=harness();h.setState({version:2,entries:{},failures:1,nextRequestAt:Date.parse('2026-10-24T09:00:02Z'),nextAllowedAt:Date.parse('2026-10-24T09:15:00Z')});
+  await h.create().load(h.job);assert.equal(h.times.length,0);h.advance(60_001);await h.create().load(h.job);assert.equal(h.times.length,3);
+  const blocked=harness();blocked.setState({version:2,entries:{},failures:1,nextRequestAt:Date.parse('2026-10-24T09:00:02Z'),nextAllowedAt:Date.parse('2026-10-24T10:00:00Z')});blocked.advance(60_001);await blocked.create().load(blocked.job);assert.equal(blocked.times.length,0);
 });

@@ -90,7 +90,7 @@ async function request(source: SourceContext, url: string, jar = new Map<string,
       continue;
     }
     const html = await response.text();
-    if (/captcha|verify you are human|cf-chl-|access denied/i.test(html)) throw new SourceError("Avots pieprasa pārbaudi; pieprasījumi apturēti.", 60 * 60_000);
+    if (/captcha|verify you are human|cf-chl-|access denied/i.test(html)) throw new SourceError("Avots pieprasa pārbaudi; pieprasījumi apturēti.", 15 * 60_000);
     return { url: current, html };
   }
   throw new SourceError("Avots pārāk daudz novirzīja.");

@@ -46,3 +46,8 @@ test("an intact player heading cannot hide a missing nonempty game table",()=>{
   const html=fixture("player-card").replace(/<table>\s*<tr data-test[\s\S]*?<\/table>/,"<table>changed layout</table>");
   assert.throws(()=>parsePlayerCard(html), /Partiju tabula/);
 });
+test("an archived tournament with deliberately hidden details still permits loading its games",()=>{
+  const meta=parseTournamentMeta(fixture('archived-tournament'));
+  assert.equal(meta.detailsHidden,true);assert.equal(meta.eventDate,'');assert.equal(meta.roundsScheduled,null);
+  assert.throws(()=>parseTournamentMeta('<title>Unexpected proxy page</title>'));
+});

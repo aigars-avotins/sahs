@@ -131,13 +131,13 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
     inFlight.current = (async () => {
     try {
       const next = await getDossier({ data: { refresh: true } });
-      setResult(current => !next.ok && current.ok ? { ...current, stale: true, warning: next.error, dossier: { ...current.dossier, nextCheckAt: next.nextCheckAt || new Date(Date.now() + 900_000).toISOString() } } : next);
+      setResult(current => !next.ok && current.ok ? { ...current, stale: true, warning: next.error, dossier: { ...current.dossier, nextCheckAt: next.nextCheckAt || new Date(Date.now() + 60_000).toISOString() } } : next);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Neizdevās atjaunot.";
       setResult((current) =>
         current.ok
-          ? { ...current, stale: true, warning: message, dossier: { ...current.dossier, nextCheckAt: new Date(Date.now() + 900_000).toISOString() } }
-          : { ok: false, error: message, nextCheckAt: new Date(Date.now() + 900_000).toISOString() },
+          ? { ...current, stale: true, warning: message, dossier: { ...current.dossier, nextCheckAt: new Date(Date.now() + 60_000).toISOString() } }
+          : { ok: false, error: message, nextCheckAt: new Date(Date.now() + 60_000).toISOString() },
       );
     }
     })().finally(() => { inFlight.current = null; });
@@ -215,7 +215,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
           chess-results.com
         </a>
         . FIDE {result.dossier.player.fideId}
-        {result.dossier.player.rating ? ` · ${result.dossier.player.rating}` : " · nav reitinga"}. Aktīva lapa pārbauda datus ne biežāk kā reizi 5 minūtēs. Poga Atjaunot ievēro to pašu avota aizturi.
+        {result.dossier.player.rating ? ` · ${result.dossier.player.rating}` : " · nav reitinga"}. Aktīva lapa pārbauda datus ne biežāk kā reizi minūtē. Poga Atjaunot ievēro to pašu avota aizturi.
       </footer>
     </Shell>
   );
@@ -331,7 +331,7 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
           {alerts.enabled ? <BellOff className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
           {alerts.enabled ? "Izslēgt paziņojumus" : "Paziņojumi aktīvā lapā"}
         </button>
-        <p role="status" className="mt-2 max-w-xl text-sm text-muted">{alerts.note || "Pārbaude ne biežāk kā reizi 5 minūtēs, kamēr lapa ir aktīva. Bloķētā telefonā vai aizvērtā lapā paziņojumi nav garantēti."}</p>
+        <p role="status" className="mt-2 max-w-xl text-sm text-muted">{alerts.note || "Pārbaude ne biežāk kā reizi minūtē, kamēr lapa ir aktīva. Bloķētā telefonā vai aizvērtā lapā paziņojumi nav garantēti."}</p>
         <CopySummary dossier={dossier} />
       </details>
     </section>

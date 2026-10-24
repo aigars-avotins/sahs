@@ -324,6 +324,7 @@ export type TournamentMeta = {
   startDate: string;
   roundsScheduled: number | null;
   fieldSize: number | null;
+  detailsHidden?: boolean;
 };
 
 export function parseTournamentMeta(html: string): TournamentMeta {
@@ -335,15 +336,17 @@ export function parseTournamentMeta(html: string): TournamentMeta {
   // Country-specific CSS classes are not a reliable participant count.
   const uploaded = flat.match(/Creator\/Last Upload:\s*(.+?)(?:\s+Search\b|\s+Player\b|\s+Logged\b|$)/i)?.[1]?.trim() ?? "";
   const dateText = flat.match(/\bDate\s+(\d{4}\/\d{2}\/\d{2})(?:\s*(?:to|[-–])\s*(\d{4}\/\d{2}\/\d{2}))?/i);
-  if (!pageTitle(html) || !rounds || !dateText) throw new Error("Turnīra dati nav atpazīti.");
+  const detailsHidden = /(?:id|name)=["'](?:ctl00_P1_|ctl00\$P1\$)?cb_alleDetails["']/i.test(html);
+  if (!pageTitle(html) || ((!rounds || !dateText) && !detailsHidden)) throw new Error("Turnīra dati nav atpazīti.");
   return {
     name: pageTitle(html),
-    startDate: isoDate(dateText[1]),
+    startDate: dateText ? isoDate(dateText[1]) : "",
     location: flat.match(/Location\s+(.+?)\s+Number of rounds/i)?.[1]?.trim() ?? "",
     timeControl: [timeMatch?.[1], timeMatch?.[2]].filter(Boolean).join(" · "),
     organizer: flat.match(/Organizer\(s\)\s+(.+?)\s+Federation/i)?.[1]?.trim() || uploaded,
     lastUpdate: flat.match(/Last update\s+([^,]+)/i)?.[1]?.trim() ?? "",
-    eventDate: isoDate(dateText[2] || dateText[1]),
+    eventDate: dateText ? isoDate(dateText[2] || dateText[1]) : "",
+    detailsHidden,
     roundsScheduled: rounds ? Number(rounds) : null,
     fieldSize: null,
   };
@@ -676,7 +679,7 @@ export function buildDossier(input: {
     partialNote:
       missing > 0
         ? "Daļu turnīru lapu neizdevās nolasīt. Spied «Atjaunot», lai mēģinātu vēlreiz."
-        : null,
+        : input.metas.some(meta => meta?.detailsHidden) ? "Daļai vēsturisko turnīru apraksts chess-results ir paslēpts; pieejamās partijas ir ielādētas." : null,
   };
 }
 

@@ -8,15 +8,15 @@ Visi apmeklētāji izmanto vienu servera kešatmiņu. Poga **Atjaunot**, automā
 
 | Dati | Minimālais intervāls |
 | --- | --- |
-| Aktīva turnīra spēlētāja kartīte un nākamās kārtas izloze | 5 minūtes |
+| Aktīva turnīra spēlētāja kartīte un nākamās kārtas izloze | 1 minūte |
 | Aktīvā turnīra vietu kaimiņi | 15 minūtes |
 | Turnīra apraksts un datumi | 24 stundas |
 | Spēlētāja turnīru meklēšana | 6 stundas |
-| Nākotnes un vēsturisko turnīru kartītes | 7 dienas (aktīvajam turnīram pārslēdzas uz 5 minūtēm) |
+| Nākotnes un vēsturisko turnīru kartītes | 7 dienas (aktīvajam turnīram pārslēdzas uz 1 minūti) |
 
 - Vienlaicīgi ienākušie pieprasījumi tiek apvienoti. Avota pieprasījumi ir secīgi, ar vismaz 2 sekunžu atstarpi.
 - Nav cron, fonā darbojošās avota aptaujas vai automātisku tūlītēju atkārtojumu. Paslēpta lapa un bezsaistes režīms neaptaujā serveri.
-- Kļūdu gadījumā aizture aug no 15 minūtēm līdz 6 stundām. HTTP 403/429 un atpazītai pārbaudes lapai — vismaz 1 stunda; ilgāks `Retry-After` vienmēr ir saistošs.
+- Pēc pirmās kļūmes atkārtota pārbaude pēc 1 minūtes; secīgām kļūmēm — 2, 4, 8 un līdz 15 minūtēm. Avota `Retry-After` vienmēr ir saistošs, arī ja tas ir ilgāks; atpazītai cilvēka pārbaudes lapai — 15 minūšu aizture. Sākotnējais kļūdas iemesls tiek saglabāts un parādīts arī aiztures laikā.
 - Kļūda aptur konkrēto ielādes ciklu. Neatpazīts HTML un cita spēlētāja kartīte neaizstāj iepriekšējos derīgos datus.
 - Aizture, parsētās lapas un pēdējais derīgais kopsavilkums saglabājas pēc servera pārstartēšanas. Arī neveiksmīga pirmā ielāde saglabā aizturi.
 - Pirmā ielāde ir lēnāka, jo vēsture jānolasa ar pauzēm. Turpmāk avots tiek pieprasīts tikai novecojušajām kešatmiņas daļām.
@@ -72,3 +72,5 @@ Node testi izmanto saglabātus HTML piemērus, kontrolētu pulksteni un viltotu 
 `#tanstack-router-entry`, `#tanstack-start-entry` un `tanstack-start-manifest:v` ir Vite ģenerēti moduļi. Tiem nav jāpievieno manuāli alias ieraksti. Ja vecā Cloudflare būve tos nevar atrast, iestati build komandu `npm run build`, deploy komandu `npm run deploy` un atkārto būvi no jaunākā `main` komita. Deploy saknes konfigurācija ar `no_bundle` izmanto jau sakompilēto rezultātu. Vite adapteris ignorē Wrangler izvietošanas laukus `build`, `no_bundle`, `rules`; Vite izdotais brīdinājums par šiem laukiem ir paredzēts un neaptur būvi.
 
 `npm run test:deploy` pārbauda `wrangler deploy --dry-run` atsevišķā pagaidu direktorijā bez `dist` un `.wrangler`, tādēļ lokāli saglabāta iepriekšējās būves konfigurācija nevar noslēpt šo kļūdu. Pārbaude neko neizvieto un nepieprasa chess-results lapas.
+
+Vecāku turnīru aprakstu avots mēdz paslēpt aiz “Show tournament details”. Šāda lapa netiek uzskatīta par bojātu: sistēma izmanto pieejamos meklēšanas datumus un spēlētāja kartītes, neizraisot visa paneļa atteici vai papildu pieprasījumus apraksta atvēršanai.

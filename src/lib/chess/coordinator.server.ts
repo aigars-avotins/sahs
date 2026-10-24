@@ -2,7 +2,7 @@ import type { LoadResult } from "./types";
 import { rigaToday } from "./parse";
 
 export const MINUTE = 60_000;
-export const ACTIVE_TTL = 5 * MINUTE;
+export const ACTIVE_TTL = MINUTE;
 export const SEARCH_TTL = 6 * 60 * MINUTE;
 export const HISTORY_TTL = 7 * 24 * 60 * MINUTE;
 export const META_TTL = 24 * 60 * MINUTE;
@@ -16,6 +16,9 @@ export type CacheState = {
   nextAllowedAt: number;
   nextRequestAt: number;
   failures: number;
+  policy?: 1;
+  lastError?: string;
+  retryAfterUntil?: number;
 };
 export interface StateStore {
   read(): Promise<CacheState | undefined>;
@@ -49,10 +52,19 @@ export class SourceCoordinator {
   private async run(job: (context: SourceContext) => Promise<Success>): Promise<LoadResult> {
     const saved = await this.store.read();
     const state = saved?.version === 2 ? saved : emptyState();
+    if (state.policy !== 1) {
+      // Shorten only our legacy first-error 15-minute guard. The old explicit
+      // 403/429 guards were at least an hour and must not be bypassed.
+      if (state.failures === 1 && state.nextAllowedAt <= state.nextRequestAt + 16 * MINUTE) {
+        state.nextAllowedAt = Math.min(state.nextAllowedAt, Math.max(this.now(), state.nextRequestAt - REQUEST_GAP + ACTIVE_TTL));
+      }
+      state.policy = 1;
+      await this.store.write(state);
+    }
     const reply = (snapshot: Success): Success => ({ ...snapshot, dossier: { ...snapshot.dossier, today: rigaToday(new Date(this.now())), nextCheckAt: new Date(state.nextAllowedAt).toISOString() } });
     if (this.now() < state.nextAllowedAt) {
       if (state.snapshot) return reply(state.snapshot);
-      return { ok: false, error: "Avots šobrīd nav pieejams. Nākamā pārbaude pēc aiztures.", nextCheckAt: new Date(state.nextAllowedAt).toISOString() };
+      return { ok: false, error: state.lastError || "Iepriekšējā ielāde neizdevās. Tās iemesls vecajā versijā netika saglabāts.", nextCheckAt: new Date(state.nextAllowedAt).toISOString() };
     }
     // Persist before any network access: eviction/restart cannot reset the guard.
     state.nextAllowedAt = this.now() + ACTIVE_TTL;
@@ -80,7 +92,7 @@ export class SourceCoordinator {
           const raw = response.headers.get("retry-after");
           const seconds = raw ? Number(raw) : NaN;
           const delay = raw ? (Number.isFinite(seconds) ? seconds * 1000 : Date.parse(raw) - this.now()) : 0;
-          throw new SourceError(`chess-results.com atbildēja ar kļūdu ${response.status}.`, Math.max(Number.isFinite(delay) ? delay : 0, response.status === 403 || response.status === 429 ? 60 * MINUTE : 0));
+          throw new SourceError(`chess-results.com atbildēja ar kļūdu ${response.status}.`, Math.max(Number.isFinite(delay) ? delay : 0, 0));
         }
         return response;
       },
@@ -89,6 +101,8 @@ export class SourceCoordinator {
       const result = await job(context);
       const active = result.dossier.tournaments.some(t => t.startDate <= result.dossier.today && t.endDate >= result.dossier.today);
       state.failures = 0;
+      delete state.lastError;
+      delete state.retryAfterUntil;
       state.nextAllowedAt = this.now() + (active ? ACTIVE_TTL : SEARCH_TTL);
       state.snapshot = result;
       // Bound storage; keep source pages for tournaments still in the dossier.
@@ -101,9 +115,11 @@ export class SourceCoordinator {
       return reply(result);
     } catch (error) {
       state.failures += 1;
-      const backoff = Math.min(SEARCH_TTL, 15 * MINUTE * 2 ** Math.min(state.failures - 1, 5));
+      const backoff = Math.min(15 * MINUTE, ACTIVE_TTL * 2 ** Math.min(state.failures - 1, 4));
       state.nextAllowedAt = this.now() + Math.max(backoff, error instanceof SourceError ? error.retryAfter : 0);
       const message = error instanceof Error ? error.message : "Neizdevās nolasīt avotu.";
+      state.lastError = message;
+      state.retryAfterUntil = error instanceof SourceError && error.retryAfter > 0 ? this.now() + error.retryAfter : undefined;
       if (state.snapshot) state.snapshot = { ...state.snapshot, stale: true, warning: `Atjaunošana neizdevās. ${message} Rādu pēdējos derīgos datus.` };
       await this.store.write(state);
       if (state.snapshot) return reply(state.snapshot);
