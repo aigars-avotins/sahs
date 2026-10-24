@@ -107,7 +107,7 @@ function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<v
     unlockSound();
     if (dossier) rememberPairings(pairingKeys(dossier));
     setEnabled(true);
-    setNote("Ieslēgts. Kamēr lapa ir atvērta, telefons paziņos un iezvanīs par jaunu galdiņu.");
+    setNote("Ieslēgts. Kamēr lapa ir atvērta, telefons paziņos par jaunu pretinieku.");
   }
 
   return { enabled, note, toggle };
