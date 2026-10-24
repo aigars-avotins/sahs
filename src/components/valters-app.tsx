@@ -30,7 +30,7 @@ import {
   formatPoints,
   formatStamp,
 } from "@/lib/chess/parse";
-import type { Dossier, Game, GameResult, LoadResult, NextGame, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
+import type { Dossier, Game, GameResult, LoadResult, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
 
 const DISPLAY_NAME = "Valters Avotiņš";
 
@@ -201,8 +201,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
         <a className="underline decoration-line underline-offset-4" href="https://chess-results.com/" target="_blank" rel="noreferrer">
           chess-results.com
         </a>
-        . FIDE {result.dossier.player.fideId}
-        {result.dossier.player.rating ? ` · ${result.dossier.player.rating}` : " · nav reitinga"}. Atsvaidzini turnīra laikā ar pogu Atjaunot.
+        . FIDE {result.dossier.player.fideId}. Atsvaidzini turnīra laikā ar pogu Atjaunot.
       </footer>
     </Shell>
   );
@@ -302,7 +301,6 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
     <section className="rounded-3xl border border-line bg-white p-5 sm:p-6">
       <p className="text-muted">
         FIDE {player.fideId}
-        {player.rating ? ` · ${player.rating}` : " · nav reitinga"}
         {player.birthYear ? ` · dz. ${player.birthYear}` : ""}
         {player.club ? ` · ${player.club}` : ""}
       </p>
@@ -702,7 +700,7 @@ function TournamentCard({
         </summary>
         <div className="border-t border-line px-4 py-4 sm:px-5">
           <div className="mb-4 grid gap-1 text-sm text-muted">
-            {tournament.timeControl ? <p className="break-words">{tournament.timeControl}</p> : null}
+            {tournament.timeControl ? <p className="break-words">{shortTime(tournament.timeControl)}</p> : null}
             {tournament.performance ? <p>Performance {tournament.performance}</p> : null}
             {tournament.organizer ? <p className="break-words">{tournament.organizer}</p> : null}
             {tournament.lastUpdate ? <p>Lapā: {tournament.lastUpdate}</p> : null}
@@ -909,6 +907,16 @@ function resultWord(result: GameResult): string {
   return "bez rezultāta";
 }
 
+function shortTime(value: string): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  const minutes = text.match(/(\d+)\s*(?:min|minūt)/i);
+  const seconds = text.match(/\+\s*(\d+)/);
+  if (!minutes) return text;
+  const clock = seconds ? `${minutes[1]}+${seconds[1]}` : `${minutes[1]} min`;
+  const pace = /blitz|žaub/i.test(text) ? "Blitz" : /rapid|ātr/i.test(text) ? "Rapid" : "";
+  return pace ? `${pace} · ${clock}` : clock;
+}
+
 function historyLine(games: Game[]): string {
   if (games.length === 0) return "Pirmo reizi";
   const wins = games.filter((game) => game.result === "win").length;
@@ -916,13 +924,6 @@ function historyLine(games: Game[]): string {
   const losses = games.filter((game) => game.result === "loss").length;
   const times = games.length === 1 ? "1 reizi" : `${games.length} reizes`;
   return `Jau ${times} · ${wins}–${draws}–${losses}`;
-}
-
-function ratingLine(next: NextGame, games: Game[]): string {
-  if (next.opponentRating && next.opponentRating > 0) return `reitings ${next.opponentRating}`;
-  const earlier = [...games].reverse().find((game) => game.opponentRating && game.opponentRating > 0);
-  if (earlier?.opponentRating) return `iepriekš reitings ${earlier.opponentRating}`;
-  return "nav reitinga";
 }
 
 function latestMeeting(games: Game[]): Game | null {
@@ -966,8 +967,8 @@ function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament:
           {bye ? null : (
             <>
               <p className="mt-1 text-sm text-pine-soft">
-                {ratingLine(next, played)}
-                {next.opponentFed ? ` · ${next.opponentFed}` : ""} · {historyLine(played)}
+                {historyLine(played)}
+                {next.opponentFed ? ` · ${next.opponentFed}` : ""}
               </p>
               {last ? (
                 <p className="mt-1 text-sm text-pine-soft">
@@ -1034,7 +1035,7 @@ function RoundNote({ dossier, tournament }: { dossier: Dossier; tournament: Tour
         Nākamā: {next.round}. kārta, {next.board > 0 ? `${next.board}. galds` : "galds vēl nav zināms"},{" "}
         {colorName(next.color).toLocaleLowerCase("lv")}
         {bye ? ", brīva kārta" : ` pret ${next.opponent}`}.
-        {bye ? "" : ` ${ratingLine(next, played)}. ${historyLine(played)}.`}
+        {bye ? "" : ` ${historyLine(played)}.`}
         {next.startsAt ? ` Sākums ${next.startsAt}.` : tournament.lastRoundAt ? ` Iepriekšējās kārtas sākums ${tournament.lastRoundAt}.` : ""}
       </p>
     );
@@ -1341,20 +1342,26 @@ function RoundLine({ games }: { games: Game[] }) {
   if (rows.length === 0) return null;
   let sum = 0;
   return (
-    <ol className="mb-4 flex gap-2 overflow-x-auto pb-1">
-      {rows.map((game) => {
-        if (game.score != null) sum += game.score;
-        const cls = game.score == null ? "bg-line" : game.score >= 1 ? "bg-pine" : game.score > 0 ? "bg-pine-soft" : "bg-loss";
-        const total = game.score == null ? null : sum;
-        return (
-          <li key={`${game.round}-${game.opponent}`} className="grid min-w-9 justify-items-center gap-1 text-xs text-muted tabular-nums">
-            <span className={`h-2 w-full rounded-sm ${cls}`} />
-            <span>{game.round}</span>
-            <span className="text-ink">{formatPoints(total)}</span>
-          </li>
-        );
-      })}
-    </ol>
+    <div className="mb-4">
+      <p className="mb-2 text-sm text-muted">Punkti pēc kārtas</p>
+      <ol className="flex gap-2 overflow-x-auto pb-1">
+        {rows.map((game) => {
+          if (game.score != null) sum += game.score;
+          const cls = game.score == null ? "bg-line" : game.score >= 1 ? "bg-pine" : game.score > 0 ? "bg-pine-soft" : "bg-loss";
+          const height = game.score == null ? 12 : game.score >= 1 ? 100 : game.score > 0 ? 58 : 28;
+          const total = game.score == null ? null : sum;
+          return (
+            <li key={`${game.round}-${game.opponent}`} className="grid min-w-9 justify-items-center gap-1 text-xs text-muted tabular-nums">
+              <span className="flex h-10 w-full items-end" title={game.opponent}>
+                <span className={`w-full rounded-sm ${cls}`} style={{ height: `${height}%` }} />
+              </span>
+              <span>{game.round}</span>
+              <span className="text-ink">{formatPoints(total)}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -1371,7 +1378,7 @@ function summaryText(dossier: Dossier): string {
   if (next) {
     const played = priorGames(dossier, next.opponent);
     lines.push(
-      `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}. ${ratingLine(next, played)}. ${historyLine(played)}.`,
+      `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}. ${historyLine(played)}.`,
     );
     if (next.startsAt) lines.push(`Sākums ${next.startsAt}.`);
   } else if (tournament.lastRoundAt) {
@@ -1430,8 +1437,9 @@ function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tourn
           <p className="truncate text-sm text-pine-soft">
             {isBye(next.opponent)
               ? placeLine(tournament)
-              : `${ratingLine(next, priorGames(dossier, next.opponent))} · ${historyLine(priorGames(dossier, next.opponent))}`}
+              : `${historyLine(priorGames(dossier, next.opponent))} · ${placeLine(tournament)}`}
           </p>
+          <Neighbors tournament={tournament} light />
         </div>
         <CopySummary dossier={dossier} compact />
       </div>
