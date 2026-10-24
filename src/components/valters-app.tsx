@@ -30,7 +30,7 @@ import {
   formatPoints,
   formatStamp,
 } from "@/lib/chess/parse";
-import type { Dossier, Game, GameResult, LoadResult, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
+import type { Dossier, Game, GameResult, LoadResult, NextGame, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
 
 const DISPLAY_NAME = "Valters Avotiņš";
 
@@ -341,6 +341,7 @@ function CurrentView({ dossier, alerts }: { dossier: Dossier; alerts: AlertState
         shown.map((tournament) => (
           <TournamentCard
             key={tournament.id}
+            dossier={dossier}
             tournament={tournament}
             games={tournament.games}
             today={dossier.today}
@@ -567,6 +568,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
               {tournaments.map(({ tournament, games }) => (
                 <TournamentCard
                   key={tournament.id}
+                  dossier={dossier}
                   tournament={tournament}
                   games={games}
                   today={dossier.today}
@@ -633,11 +635,13 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 function TournamentCard({
+  dossier,
   tournament,
   today,
   startOpen,
   games,
 }: {
+  dossier: Dossier;
   tournament: Tournament;
   today: string;
   startOpen: boolean;
@@ -708,7 +712,7 @@ function TournamentCard({
             <p className="text-sm text-brass">Partiju sarakstu šoreiz neizdevās nolasīt.</p>
           ) : (
             <>
-              <RoundNote tournament={tournament} />
+              <RoundNote dossier={dossier} tournament={tournament} />
               <RoundLine games={games} />
               <GameTable games={games} />
             </>
@@ -871,7 +875,7 @@ function NextGames({ dossier }: { dossier: Dossier }) {
     <div className="grid gap-3">
       {cards.map((tournament) =>
         tournament.nextGame ? (
-          <NextGameBanner key={tournament.id} tournament={tournament} />
+          <NextGameBanner key={tournament.id} dossier={dossier} tournament={tournament} />
         ) : (
           <LiveStatus key={tournament.id} tournament={tournament} />
         ),
@@ -886,9 +890,55 @@ function colorName(color: PieceColor): string {
   return "Krāsa vēl nav zināma";
 }
 
-function NextGameBanner({ tournament }: { tournament: Tournament }) {
+function priorGames(dossier: Dossier, name: string): Game[] {
+  const key = fold(name);
+  if (!key || isBye(name)) return [];
+  return dossier.tournaments
+    .flatMap((tournament) => tournament.games)
+    .filter((game) => fold(game.opponent) === key && game.score != null);
+}
+
+function isBye(name: string): boolean {
+  return /^(brīvs|bye|spielfrei)$/i.test(name.trim());
+}
+
+function resultWord(result: GameResult): string {
+  if (result === "win") return "uzvara";
+  if (result === "draw") return "neizšķirts";
+  if (result === "loss") return "zaudējums";
+  return "bez rezultāta";
+}
+
+function historyLine(games: Game[]): string {
+  if (games.length === 0) return "Pirmo reizi";
+  const wins = games.filter((game) => game.result === "win").length;
+  const draws = games.filter((game) => game.result === "draw").length;
+  const losses = games.filter((game) => game.result === "loss").length;
+  const times = games.length === 1 ? "1 reizi" : `${games.length} reizes`;
+  return `Jau ${times} · ${wins}–${draws}–${losses}`;
+}
+
+function ratingLine(next: NextGame, games: Game[]): string {
+  if (next.opponentRating && next.opponentRating > 0) return `reitings ${next.opponentRating}`;
+  const earlier = [...games].reverse().find((game) => game.opponentRating && game.opponentRating > 0);
+  if (earlier?.opponentRating) return `iepriekš reitings ${earlier.opponentRating}`;
+  return "nav reitinga";
+}
+
+function latestMeeting(games: Game[]): Game | null {
+  return (
+    [...games].sort((a, b) =>
+      a.tournamentDate < b.tournamentDate ? 1 : a.tournamentDate > b.tournamentDate ? -1 : b.round - a.round,
+    )[0] ?? null
+  );
+}
+
+function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
   const next = tournament.nextGame;
   if (!next) return null;
+  const bye = isBye(next.opponent);
+  const played = priorGames(dossier, next.opponent);
+  const last = latestMeeting(played);
   return (
     <section className="overflow-hidden rounded-3xl bg-pine text-white">
       <div className="grid sm:grid-cols-[8.5rem_1fr]">
@@ -910,7 +960,24 @@ function NextGameBanner({ tournament }: { tournament: Tournament }) {
               <p className="mt-2 font-display text-3xl">{colorName(next.color)}</p>
             </div>
           </div>
-          <p className="mt-4 text-lg">pret {next.opponent}</p>
+          <p className="mt-4 text-lg">
+            {bye ? "Brīva kārta" : `pret ${next.opponent}${next.opponentTitle ? `, ${next.opponentTitle}` : ""}`}
+          </p>
+          {bye ? null : (
+            <>
+              <p className="mt-1 text-sm text-pine-soft">
+                {ratingLine(next, played)}
+                {next.opponentFed ? ` · ${next.opponentFed}` : ""} · {historyLine(played)}
+              </p>
+              {last ? (
+                <p className="mt-1 text-sm text-pine-soft">
+                  Pēdējo reizi {formatDate(last.tournamentDate)}: {resultWord(last.result)},{" "}
+                  {colorName(last.color).toLocaleLowerCase("lv")}
+                  {last.tournamentName ? ` · ${last.tournamentName}` : ""}
+                </p>
+              ) : null}
+            </>
+          )}
           <p className="mt-1 text-sm text-pine-soft">
             {placeLine(tournament)}
             {next.publishedAt ? ` · izloze publicēta ${next.publishedAt}` : tournament.lastRoundAt ? ` · iepriekšējā kārta publicēta ${tournament.lastRoundAt}` : ""}
@@ -957,12 +1024,17 @@ function LiveStatus({ tournament }: { tournament: Tournament }) {
   );
 }
 
-function RoundNote({ tournament }: { tournament: Tournament }) {
+function RoundNote({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
   const next = tournament.nextGame;
   if (next) {
+    const played = priorGames(dossier, next.opponent);
+    const bye = isBye(next.opponent);
     return (
       <p className="mb-3 text-sm">
-        Nākamā: {next.round}. kārta, {next.board > 0 ? `${next.board}. galds` : "galds vēl nav zināms"}, {colorName(next.color).toLocaleLowerCase("lv")} pret {next.opponent}.
+        Nākamā: {next.round}. kārta, {next.board > 0 ? `${next.board}. galds` : "galds vēl nav zināms"},{" "}
+        {colorName(next.color).toLocaleLowerCase("lv")}
+        {bye ? ", brīva kārta" : ` pret ${next.opponent}`}.
+        {bye ? "" : ` ${ratingLine(next, played)}. ${historyLine(played)}.`}
         {next.publishedAt ? ` Izloze publicēta ${next.publishedAt}.` : tournament.lastRoundAt ? ` Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.` : ""}
       </p>
     );
@@ -985,14 +1057,96 @@ function Charts({ dossier }: { dossier: Dossier }) {
   if (games.length === 0 && !today) return null;
   return (
     <section>
-      <SectionTitle title="Grafiki" hint="šodiena, bilance un krāsas" />
+      <SectionTitle title="Grafiki" hint="turnīri, bilance un krāsas" />
       <div className="grid gap-3 lg:grid-cols-2">
+        <TournamentPoints dossier={dossier} />
+        <TournamentResults dossier={dossier} />
         {today && today.games.length > 0 ? <RoundBars tournament={today} /> : null}
         <BalanceBar dossier={dossier} />
         <ColorSplit title="Krāsas" hint="visas partijas" games={games} />
         <ColorSplit title="Krāsas uzvarās" hint="tikai uzvarētās partijas" games={games.filter((game) => game.result === "win")} />
       </div>
     </section>
+  );
+}
+
+function chartRows(dossier: Dossier): Tournament[] {
+  return [...dossier.tournaments]
+    .filter((tournament) => tournament.points != null || tournament.games.some((game) => game.score != null))
+    .sort((a, b) => (a.endDate < b.endDate ? -1 : a.endDate > b.endDate ? 1 : 0));
+}
+
+function shortWhen(value: string): string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}.${match[2]}` : "—";
+}
+
+function TournamentPoints({ dossier }: { dossier: Dossier }) {
+  const rows = chartRows(dossier).filter((tournament) => tournament.points != null);
+  const max = Math.max(1, ...rows.map((tournament) => tournament.points ?? 0));
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4 lg:col-span-2">
+      <h3 className="text-xl">Punkti turnīros</h3>
+      <p className="mt-1 text-sm text-muted">Katrs stabiņš ir viens turnīrs. Augstums ir punkti, nevis vieta.</p>
+      <div className="mt-4 flex h-40 items-end gap-2 overflow-x-auto pb-1">
+        {rows.map((tournament) => {
+          const points = tournament.points ?? 0;
+          return (
+            <div key={tournament.id} className="flex w-14 shrink-0 flex-col items-center gap-1" title={tournament.name}>
+              <span className="text-xs tabular-nums">{formatPoints(points)}</span>
+              <div className="flex h-24 w-full items-end">
+                <div className="w-full rounded-sm bg-pine" style={{ height: `${Math.max(8, (points / max) * 100)}%` }} />
+              </div>
+              <span className="text-xs text-muted tabular-nums">{shortWhen(tournament.endDate)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TournamentResults({ dossier }: { dossier: Dossier }) {
+  const rows = chartRows(dossier)
+    .map((tournament) => {
+      const games = tournament.games.filter((game) => game.score != null);
+      return {
+        id: tournament.id,
+        name: tournament.name,
+        date: tournament.endDate,
+        wins: games.filter((game) => game.result === "win").length,
+        draws: games.filter((game) => game.result === "draw").length,
+        losses: games.filter((game) => game.result === "loss").length,
+      };
+    })
+    .filter((row) => row.wins + row.draws + row.losses > 0);
+  const max = Math.max(1, ...rows.map((row) => row.wins + row.draws + row.losses));
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4 lg:col-span-2">
+      <h3 className="text-xl">Rezultāti turnīros</h3>
+      <p className="mt-1 text-sm text-muted">Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums.</p>
+      <div className="mt-4 flex h-40 items-end gap-2 overflow-x-auto pb-1">
+        {rows.map((row) => {
+          const total = row.wins + row.draws + row.losses;
+          const height = (total / max) * 100;
+          return (
+            <div key={row.id} className="flex w-14 shrink-0 flex-col items-center gap-1" title={row.name}>
+              <span className="text-xs tabular-nums">{total}</span>
+              <div className="flex h-24 w-full items-end">
+                <div className="flex w-full flex-col-reverse overflow-hidden rounded-sm" style={{ height: `${Math.max(8, height)}%` }}>
+                  {row.wins > 0 ? <div className="bg-pine" style={{ flex: row.wins }} /> : null}
+                  {row.draws > 0 ? <div className="bg-pine-soft" style={{ flex: row.draws }} /> : null}
+                  {row.losses > 0 ? <div className="bg-loss" style={{ flex: row.losses }} /> : null}
+                </div>
+              </div>
+              <span className="text-xs text-muted tabular-nums">{shortWhen(row.date)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1215,8 +1369,9 @@ function summaryText(dossier: Dossier): string {
   if (tournament.rank) lines.push(`${tournament.rank}. vieta${tournament.fieldSize ? ` no ${tournament.fieldSize}` : ""}.`);
   const next = tournament.nextGame;
   if (next) {
+    const played = priorGames(dossier, next.opponent);
     lines.push(
-      `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}.`,
+      `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}. ${ratingLine(next, played)}. ${historyLine(played)}.`,
     );
     if (next.publishedAt) lines.push(`Izloze publicēta ${next.publishedAt}.`);
   } else if (tournament.lastRoundAt) {
@@ -1269,10 +1424,13 @@ function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tourn
           <p className="truncate text-sm font-medium">
             {next.round}. kārta · {next.board > 0 ? `${next.board}. galds` : "galds nav zināms"} · {colorName(next.color).toLocaleLowerCase("lv")}
           </p>
-          <p className="truncate">pret {next.opponent}</p>
+          <p className="truncate">
+            pret {isBye(next.opponent) ? "brīvu kārtu" : next.opponent}
+          </p>
           <p className="truncate text-sm text-pine-soft">
-            {placeLine(tournament)}
-            {next.publishedAt ? ` · izloze ${next.publishedAt}` : tournament.lastRoundAt ? ` · iepriekšējā ${tournament.lastRoundAt}` : ""}
+            {isBye(next.opponent)
+              ? placeLine(tournament)
+              : `${ratingLine(next, priorGames(dossier, next.opponent))} · ${historyLine(priorGames(dossier, next.opponent))}`}
           </p>
         </div>
         <CopySummary dossier={dossier} compact />
