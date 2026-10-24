@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   BellOff,
@@ -10,10 +10,6 @@ import {
   Moon,
   Copy,
   Trophy,
-  ChevronDown,
-  CalendarDays,
-  Users,
-  BarChart3,
 } from "lucide-react";
 import { Knight } from "@/components/knight";
 import {
@@ -22,6 +18,7 @@ import {
   pairingBody,
   pairingKeys,
   rememberPairings,
+  shouldWatch,
   showPairingNotification,
   storedPairings,
   unlockSound,
@@ -35,10 +32,16 @@ import {
 } from "@/lib/chess/parse";
 import type { Dossier, Game, GameResult, LoadResult, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
 
-import { safeStorage } from "@/lib/storage";
-import { paceOf, scopedDossier, scoreRate } from "@/lib/chess/stats";
-
 const DISPLAY_NAME = "Valters Avotiņš";
+
+type PageTab = "now" | "all" | "opponents" | "stats";
+
+const PAGE_TABS: { id: PageTab; label: string }[] = [
+  { id: "now", label: "Aktuālais" },
+  { id: "all", label: "Turnīri" },
+  { id: "opponents", label: "Pretinieki" },
+  { id: "stats", label: "Statistika" },
+];
 
 type AlertState = {
   enabled: boolean;
@@ -46,16 +49,24 @@ type AlertState = {
   toggle: () => void;
 };
 
-function usePairingAlerts(dossier: Dossier | null): AlertState {
+function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<void>): AlertState {
   const [enabled, setEnabled] = useState(false);
   const [note, setNote] = useState("");
   const signature = dossier ? pairingKeys(dossier).join("\n") : "";
+  const watching = dossier ? shouldWatch(dossier) : false;
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof Notification === "undefined") return;
-    setEnabled(safeStorage.get(ALERT_KEY) === "1" && Notification.permission === "granted");
-    if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js").catch(() => {});
+    setEnabled(localStorage.getItem(ALERT_KEY) === "1" && Notification.permission === "granted");
   }, []);
+
+  useEffect(() => {
+    if (!enabled || !watching) return;
+    const id = window.setInterval(() => {
+      void refreshQuiet();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [enabled, watching, refreshQuiet]);
 
   useEffect(() => {
     if (!enabled || !dossier) return;
@@ -71,7 +82,7 @@ function usePairingAlerts(dossier: Dossier | null): AlertState {
 
   async function toggle() {
     if (enabled) {
-      safeStorage.remove(ALERT_KEY);
+      localStorage.removeItem(ALERT_KEY);
       setEnabled(false);
       setNote("Paziņojumi izslēgti.");
       return;
@@ -80,11 +91,9 @@ function usePairingAlerts(dossier: Dossier | null): AlertState {
       setNote("Šis pārlūks nepaziņo. Atver Chrome vai pievieno lapu iPhone sākuma ekrānam.");
       return;
     }
-    let permission: NotificationPermission;
-    try { permission = await Notification.requestPermission(); }
-    catch { setNote("Pārlūks neatļāva paziņojumu pieprasījumu."); return; }
+    const permission = await Notification.requestPermission();
     if (permission !== "granted") {
-      safeStorage.remove(ALERT_KEY);
+      localStorage.removeItem(ALERT_KEY);
       setEnabled(false);
       setNote("Paziņojumi ir bloķēti. Atļauj tos pārlūka iestatījumos.");
       return;
@@ -94,11 +103,11 @@ function usePairingAlerts(dossier: Dossier | null): AlertState {
     } catch {
       /* page notification still works */
     }
-    safeStorage.set(ALERT_KEY, "1");
+    localStorage.setItem(ALERT_KEY, "1");
     unlockSound();
     if (dossier) rememberPairings(pairingKeys(dossier));
     setEnabled(true);
-    setNote("Ieslēgts. Paziņojumi darbojas, kamēr lapa ir aktīva. Bloķētā telefonā pārbaudes var apstāties.");
+    setNote("Ieslēgts. Kamēr lapa ir atvērta, telefons paziņos un iezvanīs par jaunu galdiņu.");
   }
 
   return { enabled, note, toggle };
@@ -113,7 +122,7 @@ export function ValtersPending() {
           <Knight tone="white" className="size-16 rounded-xl bg-pine p-1" />
           <h1 className="text-4xl text-ink">{DISPLAY_NAME}</h1>
         </div>
-        <p className="mt-4 max-w-md text-lg text-muted">Nolasa turnīrus un partijas no chess-results.com. Pirmajā reizē tas var aizņemt dažas minūtes: avotu pārbaudām saudzīgi, secīgi un ar pauzēm.</p>
+        <p className="mt-4 max-w-md text-lg text-muted">Nolasa turnīrus un partijas no chess-results.com.</p>
       </div>
     </Shell>
   );
@@ -123,42 +132,18 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
   const [result, setResult] = useState(initial);
   const [loading, setLoading] = useState(false);
 
-  const inFlight = useRef<Promise<void> | null>(null);
-  const lastAttempt = useRef(0);
-  const refreshQuiet = useCallback((): Promise<void> => {
-    if (inFlight.current) return inFlight.current;
-    lastAttempt.current = Date.now();
-    inFlight.current = (async () => {
+  const refreshQuiet = useCallback(async () => {
     try {
-      const next = await getDossier({ data: { refresh: true } });
-      setResult(current => !next.ok && current.ok ? { ...current, stale: true, warning: next.error, dossier: { ...current.dossier, nextCheckAt: next.nextCheckAt || new Date(Date.now() + 60_000).toISOString() } } : next);
+      setResult(await getDossier({ data: { refresh: true } }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Neizdevās atjaunot.";
       setResult((current) =>
         current.ok
-          ? { ...current, stale: true, warning: message, dossier: { ...current.dossier, nextCheckAt: new Date(Date.now() + 60_000).toISOString() } }
-          : { ok: false, error: message, nextCheckAt: new Date(Date.now() + 60_000).toISOString() },
+          ? { ...current, stale: true, warning: message }
+          : { ok: false, error: message },
       );
     }
-    })().finally(() => { inFlight.current = null; });
-    return inFlight.current;
   }, []);
-
-  const nextCheckAt = result.ok ? result.dossier.nextCheckAt : result.nextCheckAt;
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const check = () => {
-      clearTimeout(timer);
-      if (document.visibilityState !== "visible" || !navigator.onLine) return;
-      const due = Math.max(new Date(nextCheckAt || 0).getTime(), lastAttempt.current + 60_000);
-      if (Date.now() >= due) void refreshQuiet();
-      else timer = setTimeout(check, Math.min(due - Date.now() + 1000, 2_147_000_000));
-    };
-    check();
-    document.addEventListener("visibilitychange", check);
-    window.addEventListener("online", check);
-    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", check); window.removeEventListener("online", check); };
-  }, [nextCheckAt, refreshQuiet]);
 
   async function refresh() {
     setLoading(true);
@@ -169,20 +154,20 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
     }
   }
 
-  const alerts = usePairingAlerts(result.ok ? result.dossier : null);
+  const alerts = usePairingAlerts(result.ok ? result.dossier : null, refreshQuiet);
+  const [tab, setTab] = useState<PageTab>("now");
   if (!result.ok) {
     return (
       <Shell>
         <div className="mx-auto max-w-xl px-5 py-20">
           <p className="text-sm font-medium text-pine">chess-results.com</p>
           <h1 className="mt-2 text-4xl">{DISPLAY_NAME}</h1>
-          <p role="alert" className="mt-4 text-lg text-muted">{result.error}</p>
-          {result.nextCheckAt ? <p className="mt-3 text-sm text-muted">Avotu varēs pārbaudīt pēc {formatStamp(result.nextCheckAt)}.</p> : null}
+          <p className="mt-4 text-lg text-muted">{result.error}</p>
           <button
             type="button"
             onClick={refresh}
             disabled={loading}
-            className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-pine px-5 font-medium text-white disabled:opacity-60"
+            className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-pine px-5 font-medium text-surface disabled:opacity-60"
           >
             <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
             Mēģināt vēlreiz
@@ -194,10 +179,10 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
 
   return (
     <Shell>
-      <TopBar dossier={result.dossier} loading={loading} onRefresh={refresh} />
+      <TopBar dossier={result.dossier} loading={loading} onRefresh={refresh} tab={tab} onTab={setTab} />
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         {result.warning ? (
-          <p role="status" className="mb-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-brass">
+          <p className="mb-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-brass">
             {result.warning}
           </p>
         ) : null}
@@ -206,8 +191,10 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
             {result.dossier.partialNote}
           </p>
         ) : null}
-        <NextGames dossier={result.dossier} />
-        <Board dossier={result.dossier} alerts={alerts} />
+        {tab === "now" ? <CurrentView dossier={result.dossier} alerts={alerts} /> : null}
+        {tab === "all" ? <Board dossier={result.dossier} part="tournaments" /> : null}
+        {tab === "opponents" ? <Board dossier={result.dossier} part="opponents" /> : null}
+        {tab === "stats" ? <StatsView dossier={result.dossier} /> : null}
       </main>
       <footer className="mx-auto max-w-6xl px-4 pt-4 pb-10 text-sm text-muted sm:px-6">
         Dati tikai no{" "}
@@ -215,17 +202,15 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
           chess-results.com
         </a>
         . FIDE {result.dossier.player.fideId}
-        {result.dossier.player.rating ? ` · ${result.dossier.player.rating}` : " · nav reitinga"}. Aktīva lapa pārbauda datus ne biežāk kā reizi minūtē. Poga Atjaunot ievēro to pašu avota aizturi.
+        {result.dossier.player.rating ? ` · ${result.dossier.player.rating}` : " · nav reitinga"}. Atsvaidzini turnīra laikā ar pogu Atjaunot.
       </footer>
     </Shell>
   );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
   return (
-    <div data-hydrated={hydrated} className="relative z-0 min-h-screen text-ink">
+    <div className="relative z-0 min-h-screen text-ink">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
@@ -242,23 +227,16 @@ function TopBar({
   dossier,
   loading,
   onRefresh,
+  tab,
+  onTab,
 }: {
   dossier: Dossier;
   loading: boolean;
   onRefresh: () => void;
+  tab: PageTab;
+  onTab: (tab: PageTab) => void;
 }) {
   const [dark, setDark] = useState(false);
-  const [showDock, setShowDock] = useState(false);
-  const [now, setNow] = useState(() => Date.parse(dossier.fetchedAt));
-  useEffect(() => { setNow(Date.now()); const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id); }, []);
-  const remaining = Math.max(0, Math.ceil((new Date(dossier.nextCheckAt).getTime() - now) / 60_000));
-  useEffect(() => {
-    const hero = document.querySelector("[data-next-game]");
-    if (!hero) { setShowDock(false); return; }
-    const observer = new IntersectionObserver(([entry]) => setShowDock(!entry.isIntersecting && entry.boundingClientRect.bottom < 0));
-    observer.observe(hero);
-    return () => observer.disconnect();
-  }, [dossier]);
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
   }, []);
@@ -266,7 +244,7 @@ function TopBar({
     const next = document.documentElement.dataset.theme === "dark" ? "" : "dark";
     if (next) document.documentElement.dataset.theme = "dark";
     else delete document.documentElement.dataset.theme;
-    safeStorage.set("valters-theme", next ? "dark" : "light");
+    localStorage.setItem("valters-theme", next ? "dark" : "light");
     setDark(Boolean(next));
   }
   const live = dossier.tournaments.find((tournament) => tournament.nextGame);
@@ -277,15 +255,12 @@ function TopBar({
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{DISPLAY_NAME}</p>
           <p className="truncate text-sm text-muted">Atjaunots {formatStamp(dossier.fetchedAt)}</p>
-
         </div>
         <button
           type="button"
           onClick={toggleTheme}
-          aria-label={dark ? "Ieslēgt gaišo režīmu" : "Ieslēgt tumšo režīmu"}
-          title={dark ? "Gaišais režīms" : "Tumšais režīms"}
           aria-pressed={dark}
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-full border border-line bg-surface font-medium sm:w-auto sm:px-4"
+          className="inline-flex h-12 items-center gap-2 rounded-full border border-line bg-surface px-4 font-medium"
         >
           {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
           <span className="hidden sm:inline">{dark ? "Gaišs" : "Tumšs"}</span>
@@ -293,48 +268,111 @@ function TopBar({
         <button
           type="button"
           onClick={onRefresh}
-          aria-label={loading ? "Atjauno" : "Atjaunot"}
-          disabled={loading || remaining > 0}
-          title={remaining > 0 ? `Avota aizsardzība: nākamā pārbaude pēc ~${remaining} min` : "Pārbaudīt avotu"}
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-full bg-pine font-medium text-white disabled:opacity-60 sm:w-auto sm:px-5"
+          disabled={loading}
+          className="inline-flex h-12 items-center gap-2 rounded-full bg-pine px-5 font-medium text-surface disabled:opacity-60"
         >
           <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
-          <span className="hidden sm:inline">{loading ? "Atjauno" : "Atjaunot"}</span>
+          <span>{loading ? "Atjauno" : "Atjaunot"}</span>
         </button>
       </div>
-      <p className="mx-auto max-w-6xl px-4 pb-2 text-xs text-muted sm:px-6" role="status">{remaining ? `Nākamā pārbaude pēc ~${remaining} min` : "Var pārbaudīt avotu"}</p>
-      {live && showDock ? <LiveDock dossier={dossier} tournament={live} /> : null}
+      {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
+      <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 pb-3 sm:px-6">
+        {PAGE_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={tab === item.id}
+            onClick={() => onTab(item.id)}
+            className={
+              "h-12 shrink-0 rounded-full px-4 text-sm font-medium " +
+              (tab === item.id ? "bg-pine text-white" : "border border-line bg-surface")
+            }
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
     </header>
   );
 }
 
 function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
-  const { totals, player } = dossier;
+  const { player } = dossier;
+  return (
+    <section className="rounded-3xl border border-line bg-white p-5 sm:p-6">
+      <p className="text-muted">
+        FIDE {player.fideId}
+        {player.rating ? ` · ${player.rating}` : " · nav reitinga"}
+        {player.birthYear ? ` · dz. ${player.birthYear}` : ""}
+        {player.club ? ` · ${player.club}` : ""}
+      </p>
+      <button
+        type="button"
+        onClick={() => void alerts.toggle()}
+        aria-pressed={alerts.enabled}
+        className={
+          "mt-4 inline-flex h-12 items-center gap-2 rounded-full px-5 font-medium " +
+          (alerts.enabled ? "border border-pine bg-white text-pine" : "bg-pine text-white")
+        }
+      >
+        {alerts.enabled ? <BellOff className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
+        {alerts.enabled ? "Paziņojumi ieslēgti" : "Paziņot telefonā"}
+      </button>
+      <p className="mt-2 max-w-md text-sm text-muted">
+        {alerts.note ||
+          "Ieslēdz, un telefons paziņos un iezvanīs, kad chess-results publicēs nākamo galdiņu. Lapa jātur atvērta."}
+      </p>
+      <CopySummary dossier={dossier} />
+    </section>
+  );
+}
+
+function CurrentView({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
+  const live = liveTournaments(dossier);
+  const shown = live.length > 0 ? live : dossier.tournaments.slice(0, 1);
+  return (
+    <div className="grid gap-4">
+      <Overview dossier={dossier} alerts={alerts} />
+      <NextGames dossier={dossier} />
+      {live.length === 0 ? <p className="text-muted">Šodien turnīra nav. Rādu pēdējo.</p> : null}
+      {shown.length === 0 ? (
+        <Empty>Turnīru vēl nav.</Empty>
+      ) : (
+        shown.map((tournament) => (
+          <TournamentCard
+            key={tournament.id}
+            tournament={tournament}
+            games={tournament.games}
+            today={dossier.today}
+            startOpen
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+function StatsView({ dossier }: { dossier: Dossier }) {
+  const { totals } = dossier;
   const stats = [
     { label: "Turnīri", value: String(totals.tournaments) },
-    { label: "Nospēlētas partijas", value: String(totals.games) },
+    { label: "Partijas", value: String(totals.games) },
     { label: "Punkti", value: formatPoints(totals.score) },
-    { label: "Uzvaras · neizšķirti · zaudējumi", value: `${totals.wins}–${totals.draws}–${totals.losses}` },
+    { label: "Bilance", value: `${totals.wins}–${totals.draws}–${totals.losses}` },
   ];
   return (
-    <section aria-label="Spēlētāja kopsavilkums" className="grid gap-4">
+    <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.map(stat => <div key={stat.label} className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-sm text-muted">{stat.label}</p>
-          <p className="mt-2 font-display text-3xl text-pine tabular-nums">{stat.value}</p>
-        </div>)}
+        {stats.map((stat) => (
+          <div key={stat.label} className="rounded-2xl border border-line bg-white px-4 py-4">
+            <p className="text-sm text-muted">{stat.label}</p>
+            <p className="mt-1 font-display text-3xl text-pine tabular-nums">{stat.value}</p>
+          </div>
+        ))}
       </div>
-      <details className="rounded-2xl border border-line bg-surface p-4">
-        <summary className="cursor-pointer font-medium">Profils un paziņojumi <span className="font-normal text-muted">· FIDE {player.fideId}</span></summary>
-        <p className="mt-3 text-sm text-muted">{player.rating ? `Turnīra reitings ${player.rating}` : "Nav reitinga"}{player.club ? ` · ${player.club}` : ""}. Gaidāmas partijas: {totals.pending}.</p>
-        <button type="button" onClick={() => void alerts.toggle()} aria-pressed={alerts.enabled} className="mt-4 inline-flex min-h-12 items-center gap-2 rounded-full border border-line px-4">
-          {alerts.enabled ? <BellOff className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
-          {alerts.enabled ? "Izslēgt paziņojumus" : "Paziņojumi aktīvā lapā"}
-        </button>
-        <p role="status" className="mt-2 max-w-xl text-sm text-muted">{alerts.note || "Pārbaude ne biežāk kā reizi minūtē, kamēr lapa ir aktīva. Bloķētā telefonā vai aizvērtā lapā paziņojumi nav garantēti."}</p>
-        <CopySummary dossier={dossier} />
-      </details>
-    </section>
+      {totals.bestRank ? <p className="text-lg">Labākā vieta — {totals.bestRank}.</p> : null}
+      <Charts dossier={dossier} />
+    </div>
   );
 }
 
@@ -365,10 +403,8 @@ function matchesQuery(haystack: string, query: string): boolean {
   return words.every((word) => text.includes(word));
 }
 
-function Board({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
+function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opponents" }) {
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState("tournaments");
-  const [onlyRepeats, setOnlyRepeats] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [year, setYear] = useState("all");
   const [pace, setPace] = useState("all");
@@ -381,13 +417,36 @@ function Board({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
   const scoped = useMemo(() => {
     return dossier.tournaments.filter((tournament) => {
       if (year !== "all" && !tournament.endDate.startsWith(year)) return false;
-      if (pace !== "all" && paceOf(tournament.timeControl) !== pace) return false;
+      const rapid = /rapid|ātr|minut/i.test(tournament.timeControl);
+      if (pace === "rapid" && !rapid) return false;
+      if (pace === "other" && (rapid || !tournament.timeControl)) return false;
       return true;
     });
   }, [dossier.tournaments, year, pace]);
 
-  const filteredDossier = useMemo(() => scopedDossier(dossier, scoped), [dossier, scoped]);
-  const scopedOpponents = filteredDossier.opponents;
+  const scopedOpponents = useMemo(() => {
+    if (year === "all" && pace === "all") return dossier.opponents;
+    const ids = new Set(scoped.map((tournament) => tournament.id));
+    return dossier.opponents.flatMap((opponent) => {
+      const meetings = opponent.meetings.filter((game) => ids.has(game.tournamentId));
+      if (meetings.length === 0) return [];
+      if (meetings.length === opponent.meetings.length) return [opponent];
+      let wins = 0;
+      let draws = 0;
+      let losses = 0;
+      let score = 0;
+      let scored = 0;
+      for (const game of meetings) {
+        if (game.score == null) continue;
+        scored += 1;
+        score += game.score;
+        if (game.result === "win") wins += 1;
+        if (game.result === "draw") draws += 1;
+        if (game.result === "loss") losses += 1;
+      }
+      return [{ ...opponent, meetings, games: meetings.length, wins, draws, losses, score, scored }];
+    });
+  }, [dossier.opponents, scoped, year, pace]);
 
   const tournaments = useMemo(() => {
     if (!needle) return scoped.map((tournament) => ({ tournament, games: tournament.games }));
@@ -418,97 +477,144 @@ function Board({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
     );
   }, [scopedOpponents, needle]);
 
-  const visibleOpponents = onlyRepeats ? opponents.filter(o => o.games > 1) : opponents;
+  const repeats = useMemo(() => {
+    const groups = new Map<string, Opponent[]>();
+    for (const opponent of opponents) {
+      const key = fold(opponent.name);
+      groups.set(key, [...(groups.get(key) ?? []), opponent]);
+    }
+    const rows: Opponent[] = [];
+    for (const group of groups.values()) {
+      const games = group.reduce((sum, opponent) => sum + opponent.games, 0);
+      if (games < 2) continue;
+      if (group.length === 1) {
+        rows.push(group[0]);
+        continue;
+      }
+      const [first] = group;
+      rows.push({
+        ...first,
+        key: `repeat:${fold(first.name)}`,
+        club: [...new Set(group.map((opponent) => opponent.club).filter(Boolean))].join(" · "),
+        games,
+        meetings: group.flatMap((opponent) => opponent.meetings),
+        wins: group.reduce((sum, opponent) => sum + opponent.wins, 0),
+        draws: group.reduce((sum, opponent) => sum + opponent.draws, 0),
+        losses: group.reduce((sum, opponent) => sum + opponent.losses, 0),
+        score: group.reduce((sum, opponent) => sum + opponent.score, 0),
+        scored: group.reduce((sum, opponent) => sum + opponent.scored, 0),
+      });
+    }
+    return rows.sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"));
+  }, [opponents]);
+  const active = repeats.find((opponent) => opponent.key === selected) ?? opponents.find((opponent) => opponent.key === selected) ?? null;
 
   return (
-    <div className="mt-8 grid gap-8">
-      <nav aria-label="Sadaļas" className="grid grid-cols-3 gap-1 rounded-2xl border border-line bg-surface p-1">
-        {[{key:"tournaments",label:"Turnīri",icon:CalendarDays},{key:"opponents",label:"Pretinieki",icon:Users},{key:"stats",label:"Statistika",icon:BarChart3}].map(item => <button key={item.key} type="button" aria-pressed={tab === item.key} onClick={() => setTab(item.key)} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium ${tab === item.key ? "bg-pine text-white" : "text-muted"}`}><item.icon className="hidden size-4 sm:block" aria-hidden />{item.label}</button>)}
-      </nav>
+    <div className="grid gap-6">
       <div className="grid gap-3">
-        <label className="search-field flex h-14 items-center gap-3 rounded-full border border-line bg-white px-4">
+        <label className="flex h-14 items-center gap-3 rounded-full border border-line bg-white px-4">
           <Search className="size-5 text-muted" aria-hidden />
           <input
-            aria-label="Meklēt pretinieku, klubu vai turnīru"
-            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Meklēt pretinieku, klubu vai turnīru"
+            placeholder={part === "tournaments" ? "Meklēt turnīru" : "Meklēt pretinieku vai klubu"}
             autoComplete="off"
             enterKeyHint="search"
             className="w-full bg-transparent text-base outline-none placeholder:text-muted"
           />
         </label>
-        <div className="flex flex-wrap gap-2">
-          <FilterChip pressed={year === "all"} onClick={() => setYear("all")}>
-            Visi gadi
-          </FilterChip>
-          {years.map((item) => (
-            <FilterChip key={item} pressed={year === item} onClick={() => setYear(item)}>
-              {item}
+        {part === "tournaments" ? (
+          <div className="flex flex-wrap gap-2">
+            <FilterChip pressed={year === "all"} onClick={() => setYear("all")}>
+              Visi gadi
             </FilterChip>
-          ))}
-          <FilterChip pressed={pace === "all"} onClick={() => setPace("all")}>
-            Visi tempi
-          </FilterChip>
-          <FilterChip pressed={pace === "rapid"} onClick={() => setPace("rapid")}>
-            Rapids
-          </FilterChip>
-          <FilterChip pressed={pace === "blitz"} onClick={() => setPace("blitz")}>Blics</FilterChip>
-          <FilterChip pressed={pace === "classical"} onClick={() => setPace("classical")}>Klasiskais</FilterChip>
-          <FilterChip pressed={pace === "unknown"} onClick={() => setPace("unknown")}>Nezināms temps</FilterChip>
-          {year !== "all" || pace !== "all" || query ? <button className="min-h-12 px-3 text-sm underline" onClick={() => { setYear("all"); setPace("all"); setQuery(""); }}>Notīrīt filtrus</button> : null}
-        </div>
+            {years.map((item) => (
+              <FilterChip key={item} pressed={year === item} onClick={() => setYear(item)}>
+                {item}
+              </FilterChip>
+            ))}
+            <FilterChip pressed={pace === "all"} onClick={() => setPace("all")}>
+              Visi tempi
+            </FilterChip>
+            <FilterChip pressed={pace === "rapid"} onClick={() => setPace("rapid")}>
+              Rapids
+            </FilterChip>
+            <FilterChip pressed={pace === "other"} onClick={() => setPace("other")}>
+              Citi
+            </FilterChip>
+          </div>
+        ) : null}
         {needle ? (
           <p className="px-4 text-sm text-muted">
-            {tournaments.length === 1 ? "1 turnīrs" : `${tournaments.length} turnīri`} ·{" "}
-            {opponents.length === 1 ? "1 pretinieks" : `${opponents.length} pretinieki`}
+            {part === "tournaments"
+              ? tournaments.length === 1
+                ? "1 turnīrs"
+                : `${tournaments.length} turnīri`
+              : opponents.length === 1
+                ? "1 pretinieks"
+                : `${opponents.length} pretinieki`}
           </p>
         ) : null}
       </div>
 
-      <Overview dossier={filteredDossier} alerts={alerts} />
-
-      {tab === "stats" ? <Charts dossier={filteredDossier} /> : null}
-      {tab === "tournaments" ? <section aria-label="Turnīri">
-        <SectionTitle title="Turnīri" hint={`${tournaments.length} no ${dossier.tournaments.length}`} />
-        {tournaments.length === 0 ? (
-          <Empty>Nav turnīru, kas atbilst meklējumam.</Empty>
-        ) : (
-          <div className="grid gap-3">
-            {tournaments.map(({ tournament, games }, index) => (
-              <TournamentCard
-                key={tournament.id}
-                tournament={tournament}
-                games={games}
-                today={dossier.today}
-                startOpen={Boolean(needle) || (index === 0 && !needle)}
-              />
-            ))}
-          </div>
-        )}
-      </section> : null}
-
-      {tab === "opponents" ? <section aria-label="Pretinieki">
-        <div className="mb-4"><FilterChip pressed={onlyRepeats} onClick={() => setOnlyRepeats(!onlyRepeats)}>Tikai atkārtotie pretinieki</FilterChip></div>
-        <SectionTitle title="Pretinieki" hint={needle ? `${opponents.length} atbilst` : "cik reižu un kā veicies"} />
-        {visibleOpponents.length === 0 ? (
-          <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
-        ) : (
-          <ul className="grid gap-2">
-            {visibleOpponents.map((opponent) => (
-              <li key={opponent.key}>
-                <OpponentRow
-                  opponent={opponent}
-                  pressed={opponent.key === selected}
-                  onSelect={() => setSelected((current) => (current === opponent.key ? null : opponent.key))}
+      {part === "tournaments" ? (
+        <section>
+          <SectionTitle title="Turnīri" hint={`${tournaments.length} no ${dossier.tournaments.length}`} />
+          {tournaments.length === 0 ? (
+            <Empty>Nav turnīru, kas atbilst meklējumam.</Empty>
+          ) : (
+            <div className="grid gap-3">
+              {tournaments.map(({ tournament, games }) => (
+                <TournamentCard
+                  key={tournament.id}
+                  tournament={tournament}
+                  games={games}
+                  today={dossier.today}
+                  startOpen={Boolean(needle)}
                 />
-                {opponent.key === selected ? <Meetings opponent={opponent} /> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section> : null}
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          {repeats.length > 0 ? (
+            <section>
+              <SectionTitle title="Atkārtoti pretinieki" hint="spēlēts vairāk nekā vienu reizi" />
+              <ul className="grid gap-2">
+                {repeats.map((opponent) => (
+                  <li key={opponent.key}>
+                    <OpponentRow
+                      opponent={opponent}
+                      pressed={opponent.key === selected}
+                      onSelect={() => setSelected((current) => (current === opponent.key ? null : opponent.key))}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          <section>
+            <SectionTitle title="Pretinieki" hint={needle ? `${opponents.length} atbilst` : "cik reižu un kā veicies"} />
+            {opponents.length === 0 ? (
+              <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
+            ) : (
+              <ul className="grid gap-2">
+                {opponents.map((opponent) => (
+                  <li key={opponent.key}>
+                    <OpponentRow
+                      opponent={opponent}
+                      pressed={opponent.key === selected}
+                      onSelect={() => setSelected((current) => (current === opponent.key ? null : opponent.key))}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {active ? <Meetings opponent={active} /> : null}
+          </section>
+        </>
+      )}
     </div>
   );
 }
@@ -537,25 +643,25 @@ function TournamentCard({
   startOpen: boolean;
   games: Game[];
 }) {
-  const status = dayStatus(tournament.endDate, today, tournament.startDate);
-  const badge = status === "live" ? "Notiek" : status === "today" ? "Šodien" : status === "upcoming" ? "Gaidāms" : null;
+  const status = dayStatus(tournament.endDate, today);
+  const badge = status === "today" ? "Šodien" : status === "upcoming" ? "Gaidāms" : null;
   const medal = tournament.rank != null && tournament.rank >= 1 && tournament.rank <= 3;
   const [opened, setOpened] = useState(startOpen);
   useEffect(() => {
     setOpened(startOpen);
   }, [startOpen]);
   return (
-    <article className={`relative min-w-0 rounded-2xl border-2 bg-surface ${scoreBorder(tournament)}`}>
+    <article className={`min-w-0 rounded-2xl border-2 bg-surface ${scoreBorder(tournament)}`}>
       <details className="group" open={opened} onToggle={(event) => setOpened(event.currentTarget.open)}>
         <summary className="flex cursor-pointer list-none flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2 pr-6">
+            <div className="flex flex-wrap items-center gap-2">
               {badge ? (
-                <span className="rounded-full bg-pine px-2 py-0.5 text-xs font-medium text-white">{badge}</span>
+                <span className="rounded-full bg-pine px-2 py-0.5 text-xs font-medium text-surface">{badge}</span>
               ) : null}
               {medal ? (
                 <span className="rounded-full bg-pine-soft px-2 py-0.5 text-xs font-medium text-pine">
-                  {status === "live" || status === "today" ? "Pašlaik " : ""}{tournament.rank}. vieta
+                  {tournament.rank}. vieta
                 </span>
               ) : null}
               <h3 className="text-xl">{tournament.name}</h3>
@@ -570,7 +676,6 @@ function TournamentCard({
               ) : null}
             </p>
           </div>
-          <ChevronDown className="absolute top-5 right-4 size-5 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
           <dl className="flex gap-4 text-sm tabular-nums sm:text-right">
             <div>
               <dt className="text-muted">Punkti</dt>
@@ -624,12 +729,12 @@ function GameTable({ games }: { games: Game[] }) {
       {games.map((game) => (
         <li
           key={`${game.tournamentId}-${game.round}-${game.opponent}`}
-          className="grid grid-cols-[1.25rem_2rem_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[2.5rem_2.75rem_1fr_auto] sm:gap-3 rounded-xl bg-bg px-3 py-3"
+          className="grid grid-cols-[2.5rem_2.75rem_1fr_auto] items-center gap-3 rounded-xl bg-bg px-3 py-3"
         >
           <span className="text-sm text-muted tabular-nums">{game.round}.</span>
           <PieceMark color={game.color} />
           <span className="min-w-0">
-            <span className="block break-words font-medium">{game.opponent}</span>
+            <span className="block truncate font-medium">{game.opponent}</span>
             <span className="block truncate text-sm text-muted">
               {colorName(game.color).toLocaleLowerCase("lv")}
               {game.board > 0 ? ` · ${game.board}. galds` : ""}
@@ -652,7 +757,7 @@ function OpponentRow({
   pressed: boolean;
   onSelect: () => void;
 }) {
-  const percent = opponent.scored ? Math.round((opponent.score / opponent.scored) * 100) : null;
+  const percent = opponent.scored ? Math.round((opponent.score / opponent.scored) * 100) : 0;
   return (
     <button
       type="button"
@@ -671,13 +776,13 @@ function OpponentRow({
           {opponent.name}
           {opponent.games > 1 ? <span className="text-muted"> · {opponent.games}×</span> : null}
         </span>
-        <span className="block truncate text-sm text-muted">{opponent.club || opponent.fed}{opponent.pending ? ` · ${opponent.pending} gaidāma` : ""}</span>
+        <span className="block truncate text-sm text-muted">{opponent.club || opponent.fed}</span>
       </span>
       <span className="text-right">
         <span className="block font-medium tabular-nums">
           {opponent.wins}–{opponent.draws}–{opponent.losses}
         </span>
-        <span className="block text-sm text-muted tabular-nums">{formatPoints(opponent.score)} · {percent == null ? "vēl nav rezultāta" : `${percent}%`}</span>
+        <span className="block text-sm text-muted tabular-nums">{formatPoints(opponent.score)} · {percent}%</span>
       </span>
     </button>
   );
@@ -717,16 +822,16 @@ function Meetings({ opponent }: { opponent: Opponent }) {
 }
 
 function PieceMark({ color }: { color: PieceColor }) {
-  if (color === "unknown") return <span className="size-8 shrink-0 sm:size-11" />;
+  if (color === "unknown") return <span className="size-11 shrink-0" />;
   const white = color === "white";
   return (
     <span
       className={
-        "grid size-8 shrink-0 sm:size-11 place-items-center rounded-md " +
-        (white ? "bg-pine" : "piece-light border border-line bg-white")
+        "grid size-11 shrink-0 place-items-center rounded-md " +
+        (white ? "bg-pine" : "border border-line bg-white")
       }
     >
-      <Knight tone={white ? "white" : "black"} className="size-7 sm:size-10" />
+      <Knight tone={white ? "white" : "black"} className="size-10" />
     </span>
   );
 }
@@ -750,17 +855,17 @@ function ResultMark({ result }: { result: GameResult }) {
 }
 
 function liveTournaments(dossier: Dossier): Tournament[] {
-  return dossier.tournaments.filter((tournament) => ["today", "live"].includes(dayStatus(tournament.endDate, dossier.today, tournament.startDate)) || tournament.nextGame || tournament.awaitingPairing);
+  return dossier.tournaments.filter((tournament) => dayStatus(tournament.endDate, dossier.today) === "today" || tournament.nextGame || tournament.awaitingPairing);
 }
 
 function NextGames({ dossier }: { dossier: Dossier }) {
-  const cards = liveTournaments(dossier);
+  const cards = liveTournaments(dossier).filter((tournament) => tournament.nextGame || tournament.awaitingPairing || dayStatus(tournament.endDate, dossier.today) === "today");
   if (cards.length === 0) return null;
   return (
-    <div className="mb-6 grid gap-3">
+    <div className="grid gap-3">
       {cards.map((tournament) =>
         tournament.nextGame ? (
-          <NextGameBanner key={tournament.id} tournament={tournament} dossier={dossier} />
+          <NextGameBanner key={tournament.id} tournament={tournament} />
         ) : (
           <LiveStatus key={tournament.id} tournament={tournament} />
         ),
@@ -775,13 +880,13 @@ function colorName(color: PieceColor): string {
   return "Krāsa vēl nav zināma";
 }
 
-function NextGameBanner({ tournament, dossier }: { tournament: Tournament; dossier: Dossier }) {
+function NextGameBanner({ tournament }: { tournament: Tournament }) {
   const next = tournament.nextGame;
   if (!next) return null;
   return (
-    <section data-next-game aria-label="Nākamā partija" className="overflow-hidden rounded-3xl bg-pine text-white">
+    <section className="overflow-hidden rounded-3xl bg-pine text-white">
       <div className="grid sm:grid-cols-[8.5rem_1fr]">
-        <div className="hidden place-items-center bg-white px-4 py-5 sm:grid">
+        <div className="grid place-items-center bg-white px-4 py-5">
           <MiniBoard color={next.color} />
         </div>
         <div className="px-5 py-5 sm:px-6">
@@ -799,11 +904,10 @@ function NextGameBanner({ tournament, dossier }: { tournament: Tournament; dossi
               <p className="mt-2 font-display text-3xl">{colorName(next.color)}</p>
             </div>
           </div>
-          <p className="mt-4 break-words text-xl font-medium">pret {next.opponent}</p>
-          {next.opponentRating ? <p className="mt-1 text-sm text-pine-soft">Pretinieka reitings {next.opponentRating}</p> : null}
+          <p className="mt-4 text-lg">pret {next.opponent}</p>
           <p className="mt-1 text-sm text-pine-soft">
-            {tournament.location ? `${tournament.location} · ` : ""}{placeLine(tournament)}
-            {next.startsAt ? ` · sākums ${next.startsAt}` : tournament.lastRoundAt ? ` · iepriekšējās kārtas sākums ${tournament.lastRoundAt}` : ""}
+            {placeLine(tournament)}
+            {next.publishedAt ? ` · izloze publicēta ${next.publishedAt}` : tournament.lastRoundAt ? ` · iepriekšējā kārta publicēta ${tournament.lastRoundAt}` : ""}
           </p>
           <Neighbors tournament={tournament} light />
           <a
@@ -815,7 +919,6 @@ function NextGameBanner({ tournament, dossier }: { tournament: Tournament; dossi
             Izloze chess-results
             <ExternalLink className="size-4" aria-hidden />
           </a>
-          <div className="mt-2"><CopySummary dossier={dossier} compact /></div>
         </div>
       </div>
     </section>
@@ -854,12 +957,12 @@ function RoundNote({ tournament }: { tournament: Tournament }) {
     return (
       <p className="mb-3 text-sm">
         Nākamā: {next.round}. kārta, {next.board > 0 ? `${next.board}. galds` : "galds vēl nav zināms"}, {colorName(next.color).toLocaleLowerCase("lv")} pret {next.opponent}.
-        {next.startsAt ? ` Sākums ${next.startsAt}.` : tournament.lastRoundAt ? ` Iepriekšējās kārtas sākums ${tournament.lastRoundAt}.` : ""}
+        {next.publishedAt ? ` Izloze publicēta ${next.publishedAt}.` : tournament.lastRoundAt ? ` Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.` : ""}
       </p>
     );
   }
   if (tournament.awaitingPairing) {
-    return <p className="mb-3 text-sm text-brass">Nākamā izloze vēl nav publicēta. Lapa pārbaudīs avotu pēc aiztures.</p>;
+    return <p className="mb-3 text-sm text-brass">Nākamā izloze vēl nav publicēta. Spied «Atjaunot».</p>;
   }
   return null;
 }
@@ -872,8 +975,8 @@ function timeline(dossier: Dossier): Game[] {
 
 function Charts({ dossier }: { dossier: Dossier }) {
   const games = useMemo(() => timeline(dossier), [dossier]);
-  const today = liveTournaments(dossier)[0];
-
+  const today = dossier.tournaments.find((tournament) => dayStatus(tournament.endDate, dossier.today) === "today");
+  if (games.length === 0 && !today) return null;
   return (
     <section>
       <SectionTitle title="Grafiki" hint="šodiena, bilance un krāsas" />
@@ -881,8 +984,7 @@ function Charts({ dossier }: { dossier: Dossier }) {
         {today && today.games.length > 0 ? <RoundBars tournament={today} /> : null}
         <BalanceBar dossier={dossier} />
         <ColorSplit title="Krāsas" hint="visas partijas" games={games} />
-        <ColorPerformance games={games} />
-        <TournamentTrend tournaments={dossier.tournaments} />
+        <ColorSplit title="Krāsas uzvarās" hint="tikai uzvarētās partijas" games={games.filter((game) => game.result === "win")} />
       </div>
     </section>
   );
@@ -948,7 +1050,6 @@ function BalanceBar({ dossier }: { dossier: Dossier }) {
 }
 
 function ColorSplit({ title, hint, games }: { title: string; hint: string; games: Game[] }) {
-  games = games.filter(g => g.score != null);
   const total = games.length;
   const counts = {
     white: games.filter((game) => game.color === "white").length,
@@ -1054,7 +1155,7 @@ function MiniBoard({ color, className = "size-16" }: { color: PieceColor; classN
       {squares.map((light, index) => {
         const show = (white && !light && index === 0) || (!white && light && index === 1);
         return (
-          <span key={index} className={`grid place-items-center ${light ? "piece-light bg-white" : "bg-[#1e4a38]"}`}>
+          <span key={index} className={`grid place-items-center ${light ? "bg-white" : "bg-[#1e4a38]"}`}>
             {show ? <Knight tone={white ? "white" : "black"} className="size-3/5" /> : null}
           </span>
         );
@@ -1098,7 +1199,7 @@ function RoundLine({ games }: { games: Game[] }) {
 }
 
 function summaryText(dossier: Dossier): string {
-  const tournament = liveTournaments(dossier)[0] ?? dossier.tournaments[0];
+  const tournament = dossier.tournaments.find((item) => item.endDate === dossier.today) ?? dossier.tournaments[0];
   if (!tournament) return "Nav turnīru.";
   const played = tournament.games.filter((game) => game.score != null).length;
   const when = tournament.endDate === dossier.today ? " šodien" : ` ${formatDate(tournament.endDate)}`;
@@ -1111,9 +1212,9 @@ function summaryText(dossier: Dossier): string {
     lines.push(
       `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}.`,
     );
-    if (next.startsAt) lines.push(`Sākums ${next.startsAt}.`);
+    if (next.publishedAt) lines.push(`Izloze publicēta ${next.publishedAt}.`);
   } else if (tournament.lastRoundAt) {
-    lines.push(`Iepriekšējās kārtas sākums ${tournament.lastRoundAt}.`);
+    lines.push(`Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.`);
   }
   if (tournament.standings?.above) {
     lines.push(`Virs: ${tournament.standings.above.name}, ${formatPoints(tournament.standings.above.points)}.`);
@@ -1165,7 +1266,7 @@ function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tourn
           <p className="truncate">pret {next.opponent}</p>
           <p className="truncate text-sm text-pine-soft">
             {placeLine(tournament)}
-            {next.startsAt ? ` · sākums ${next.startsAt}` : tournament.lastRoundAt ? ` · iepriekšējā ${tournament.lastRoundAt}` : ""}
+            {next.publishedAt ? ` · izloze ${next.publishedAt}` : tournament.lastRoundAt ? ` · iepriekšējā ${tournament.lastRoundAt}` : ""}
           </p>
         </div>
         <CopySummary dossier={dossier} compact />
@@ -1174,26 +1275,3 @@ function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tourn
   );
 }
 
-
-
-function ColorPerformance({ games }: { games: Game[] }) {
-  return <div className="rounded-2xl border border-line bg-surface p-4">
-    <h3 className="text-xl">Punktu procents pēc krāsas</h3>
-    <p className="mt-1 text-sm text-muted">Iegūtie punkti no iespējamajiem; tikai nospēlētas partijas.</p>
-    <div className="mt-4 grid gap-4">{(["white", "black"] as const).map(color => {
-      const rows = games.filter(g => g.color === color && g.score != null);
-      const rate = scoreRate(rows);
-      return <div key={color}><p className="mb-2 flex justify-between text-sm"><span>{colorName(color)} · {rows.length} partijas</span><span>{rate == null ? "—" : `${rate}%`}</span></p><div className="h-3 overflow-hidden rounded-full bg-bg-deep"><div className="h-full rounded-full bg-pine" style={{ width: `${rate || 0}%` }} /></div></div>;
-    })}</div>
-  </div>;
-}
-function TournamentTrend({ tournaments }: { tournaments: Tournament[] }) {
-  const rows = [...tournaments].reverse().filter(t => t.games.some(g => g.score != null));
-  return <div className="rounded-2xl border border-line bg-surface p-4 lg:col-span-2">
-    <h3 className="text-xl">Rezultātu tendence pa turnīriem</h3>
-    {rows.length ? <ol className="mt-4 grid gap-4 sm:grid-cols-2">{rows.map(t => {
-      const rate = scoreRate(t.games);
-      return <li key={t.id}><p className="text-sm font-medium">{t.name}</p><p className="mt-1 text-sm text-muted">{formatDate(t.endDate)} · {rate}% no iespējamajiem punktiem</p><div className="mt-2 h-2 rounded-full bg-bg-deep"><div className="h-full rounded-full bg-pine" style={{width:`${rate || 0}%`}} /></div></li>;
-    })}</ol> : <p className="mt-3 text-sm text-muted">Šajos filtros vēl nav nospēlētu partiju.</p>}
-  </div>;
-}
