@@ -729,7 +729,7 @@ function TournamentCard({
     setOpened(startOpen);
   }, [startOpen]);
   return (
-    <article className={`min-w-0 rounded-2xl border-2 bg-surface ${scoreBorder(tournament)}`}>
+    <article className="min-w-0 rounded-2xl border border-line bg-surface">
       <details className="group" open={opened} onToggle={(event) => setOpened(event.currentTarget.open)}>
         <summary
           aria-expanded={opened}
@@ -890,8 +890,8 @@ function OpponentRow({
       aria-pressed={pressed}
       onClick={onSelect}
       className={
-        "flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left motion-reduce:transition-none " +
-        (pressed ? "border-pine bg-pine-soft" : opponent.games > 1 ? "border-pine bg-surface" : "border-line bg-surface")
+        "flex w-full items-center gap-3 rounded-2xl border border-line px-4 py-4 text-left motion-reduce:transition-none " +
+        (pressed ? "bg-pine-soft" : "bg-surface")
       }
     >
       <span className="grid size-12 shrink-0 place-items-center rounded-full bg-bg-deep text-sm font-medium">
@@ -917,7 +917,7 @@ function OpponentRow({
 
 function Meetings({ opponent }: { opponent: Opponent }) {
   return (
-    <div className="mt-3 rounded-2xl border border-pine bg-surface p-4">
+    <div className="mt-3 rounded-2xl border border-line bg-surface p-4">
       <div className="mb-3 flex items-center gap-2">
         <Trophy className="size-4 text-pine" aria-hidden />
         <h3 className="text-xl">{opponent.name}</h3>
@@ -1073,7 +1073,7 @@ function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament:
   const played = priorGames(dossier, next.opponent);
   const last = latestMeeting(played);
   return (
-    <section className="overflow-hidden rounded-3xl bg-pine text-white">
+    <section className="overflow-hidden rounded-2xl bg-pine text-white">
       <div className="grid sm:grid-cols-[8.5rem_1fr]">
         <div className="grid place-items-center bg-white px-4 py-5">
           <MiniBoard color={next.color} />
@@ -1489,15 +1489,6 @@ function initials(name: string): string {
   const first = surname?.[0] ?? "";
   const second = given?.split(/\s+/)[0]?.[0] ?? "";
   return `${first}${second}`.toLocaleUpperCase("lv") || "?";
-}
-
-function scoreBorder(tournament: Tournament): string {
-  const played = tournament.games.filter((game) => game.score != null).length;
-  if (!played || tournament.points == null) return "border-line";
-  const rate = tournament.points / played;
-  if (rate > 0.5) return "border-pine";
-  if (rate < 0.5) return "border-loss";
-  return "border-line";
 }
 
 function placeLine(tournament: Tournament): string {
