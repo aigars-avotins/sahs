@@ -15,7 +15,9 @@ const output = await build({
       const coordinator = new SourceCoordinator({read: async () => saved, write: async state => { saved = state; }});
       export default { async fetch() {
         const result = await coordinator.load(async source => {
-          const response = await source.request("https://chess-results.com/binding-check");
+          const redirect = await source.request("https://chess-results.com/binding-check");
+          if (redirect.status !== 302) throw new Error("Expected source node redirect");
+          const response = await source.request(redirect.headers.get("location"));
           if (await response.text() !== "mock-source") throw new Error("Unexpected outbound response");
           return {ok: true, stale: false, warning: null, dossier: {today: "2026-10-25", tournaments: [], fetchedAt: new Date().toISOString()}};
         });
@@ -31,8 +33,11 @@ const runtime = new Miniflare(convertV4MiniflareOptions({
   script: output.outputFiles[0].text,
   compatibilityDate: "2026-10-24",
   outboundService: async request => {
-    assert.equal(request.url, "https://chess-results.com/binding-check");
     outbound += 1;
+    if (request.url === "https://chess-results.com/binding-check") {
+      return new Response(null, { status: 302, headers: { Location: "https://S2.chess-results.com/binding-check" } });
+    }
+    assert.equal(request.url, "https://s2.chess-results.com/binding-check");
     return new Response("mock-source");
   },
 }));
@@ -41,8 +46,8 @@ try {
   assert.equal(first.ok, true, first.error);
   const cached = await (await runtime.dispatchFetch("http://localhost/check")).json();
   assert.equal(cached.ok, true, cached.error);
-  assert.equal(outbound, 1, "second visitor must use the shared cache");
-  console.log("Workers runtime: native fetch binding and shared cache passed (mock source).");
+  assert.equal(outbound, 2, "second visitor must use the shared cache");
+  console.log("Workers runtime: native fetch binding, S2 redirect and shared cache passed (mock source).");
 } finally {
   await runtime.dispose();
 }

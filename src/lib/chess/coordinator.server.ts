@@ -1,5 +1,6 @@
 import type { LoadResult } from "./types";
 import { rigaToday } from "./parse";
+import { isChessResultsUrl } from "./source-url";
 
 export const MINUTE = 60_000;
 export const ACTIVE_TTL = MINUTE;
@@ -53,9 +54,9 @@ export class SourceCoordinator {
   private async run(job: (context: SourceContext) => Promise<Success>): Promise<LoadResult> {
     const saved = await this.store.read();
     const state = saved?.version === 2 ? saved : emptyState();
-    // This local bug failed before an outbound request. Repair its cached
-    // cooldown after deployment, retaining all pages and any upstream hold.
-    if (state.lastError?.startsWith("Illegal invocation:") && !state.retryAfterUntil) {
+    // Repair cached local transport/allowlist errors after deployment while
+    // retaining all pages and any explicit upstream hold.
+    if ((state.lastError?.startsWith("Illegal invocation:") || state.lastError === "Avota novirzīšanas adrese nav atļauta.") && !state.retryAfterUntil) {
       state.nextAllowedAt = this.now();
       state.failures = 0;
       delete state.lastError;
@@ -88,14 +89,14 @@ export class SourceCoordinator {
       },
       request: async (url, init) => {
         const target = new URL(url);
-        if (target.protocol !== "https:" || !["chess-results.com", "www.chess-results.com"].includes(target.hostname)) {
-          throw new SourceError("Avota novirzīšanas adrese nav atļauta.");
+        if (!isChessResultsUrl(target)) {
+          throw new SourceError(`Avota novirzīšanas adrese nav atļauta: ${target.hostname}.`);
         }
         const wait = state.nextRequestAt - this.now();
         if (wait > 0) await this.pause(wait);
         state.nextRequestAt = this.now() + REQUEST_GAP;
         await this.store.write(state);
-        const response = await this.fetcher(url, { ...init, signal: AbortSignal.timeout(20_000) });
+        const response = await this.fetcher(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(20_000) });
         if (!response.ok && !(response.status >= 300 && response.status < 400)) {
           const raw = response.headers.get("retry-after");
           const seconds = raw ? Number(raw) : NaN;

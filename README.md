@@ -77,3 +77,5 @@ Node testi izmanto saglabātus HTML piemērus, kontrolētu pulksteni un viltotu 
 Vecāku turnīru aprakstu avots mēdz paslēpt aiz “Show tournament details”. Šāda lapa netiek uzskatīta par bojātu: sistēma izmanto pieejamos meklēšanas datumus un spēlētāja kartītes, neizraisot visa paneļa atteici vai papildu pieprasījumus apraksta atvēršanai.
 
 `npm run test:runtime` pārbauda noklusēto `fetch` piesaisti un kopīgo kešatmiņu īstā Workers `workerd` izpildvidē (Miniflare). Avota atbildes tiek aizstātas lokāli; ārēji pieprasījumi netiek veikti. Šī pārbaude ir iekļauta `npm run check`.
+
+Avota novirzīšanas pārbaude atbalsta HTTPS `chess-results.com`, `www.chess-results.com` un numurētos `S` serverus (piemēram, `S2.chess-results.com`). Katru novirzīšanas soli pārbauda atsevišķi; citi domēni, nestandarta porti un URL ar lietotāja datiem netiek pieņemti.
