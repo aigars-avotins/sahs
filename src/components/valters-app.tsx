@@ -317,7 +317,13 @@ function TopBar({
             >
               <Knight tone="white" className="size-10 p-0.5" />
             </button>
-            <h1 className="min-w-0 pt-1 text-2xl leading-tight sm:text-3xl">{DISPLAY_NAME}</h1>
+            <div className="min-w-0">
+              <h1 className="pt-1 text-2xl leading-tight sm:text-3xl">{DISPLAY_NAME}</h1>
+              <p className="mt-1 text-sm leading-snug text-muted">
+                FIDE {dossier.player.fideId}
+                {dossier.player.club ? ` · ${dossier.player.club}` : ""}
+              </p>
+            </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <div className="flex items-center gap-2">
@@ -347,10 +353,6 @@ function TopBar({
             </p>
           </div>
         </div>
-        <p className="mt-1 text-sm leading-snug text-muted">
-          FIDE {dossier.player.fideId}
-          {dossier.player.club ? ` · ${dossier.player.club}` : ""}
-        </p>
       </div>
       {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
       <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 sm:px-4">
