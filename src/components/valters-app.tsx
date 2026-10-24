@@ -181,7 +181,6 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
             {result.dossier.partialNote}
           </p>
         ) : null}
-        <InstallHint />
         <Overview dossier={result.dossier} alerts={alerts} />
         <NextGames dossier={result.dossier} />
         <Charts dossier={result.dossier} />
@@ -1212,37 +1211,6 @@ function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tourn
         <CopySummary dossier={dossier} compact />
       </div>
     </div>
-  );
-}
-
-function InstallHint() {
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    if (localStorage.getItem("valters-install") === "1" || standalone) setOpen(false);
-  }, []);
-  if (!open) return null;
-  return (
-    <section className="mb-4 rounded-2xl border border-line bg-surface px-4 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="text-xl">Uz sākuma ekrāna</h2>
-        <button
-          type="button"
-          className="h-12 shrink-0 rounded-full px-3 text-sm font-medium text-pine"
-          onClick={() => {
-            localStorage.setItem("valters-install", "1");
-            setOpen(false);
-          }}
-        >
-          Aizvērt
-        </button>
-      </div>
-      <p className="mt-2 max-w-2xl text-sm text-muted">
-        iPhone: Safari dalīšanās poga, tad «Pievienot sākuma ekrānam». Android: pārlūka izvēlne, tad «Pievienot sākuma ekrānam». Lapa atveras vienā pieskārienā. Signāls par jaunu galdiņu skan, kamēr lapa ir atvērta.
-      </p>
-    </section>
   );
 }
 
