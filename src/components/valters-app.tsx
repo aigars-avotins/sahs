@@ -476,13 +476,14 @@ function GameTable({ games }: { games: Game[] }) {
       {games.map((game) => (
         <li
           key={`${game.tournamentId}-${game.round}-${game.opponent}`}
-          className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 rounded-xl bg-bg px-3 py-2"
+          className="grid grid-cols-[2.5rem_2.75rem_1fr_auto] items-center gap-3 rounded-xl bg-bg px-3 py-2"
         >
           <span className="text-sm text-muted tabular-nums">{game.round}.</span>
+          <PieceMark color={game.color} />
           <span className="min-w-0">
             <span className="block truncate font-medium">{game.opponent}</span>
             <span className="block truncate text-sm text-muted">
-              <ColorLabel color={game.color} />
+              {colorName(game.color).toLocaleLowerCase("lv")}
               {game.board > 0 ? ` · ${game.board}. galds` : ""}
               {game.opponentClub ? ` · ${game.opponentClub}` : ""}
             </span>
@@ -542,10 +543,11 @@ function Meetings({ opponent }: { opponent: Opponent }) {
         {opponent.meetings.map((game) => (
           <li key={`${game.tournamentId}-${game.round}`} className="border-t border-line pt-3 first:border-t-0 first:pt-0">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <PieceMark color={game.color} />
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">{game.tournamentName}</p>
                 <p className="mt-1 text-sm text-muted">
-                  {formatDate(game.tournamentDate)} · {game.round}. kārta · <ColorLabel color={game.color} />
+                  {formatDate(game.tournamentDate)} · {game.round}. kārta · {colorName(game.color).toLocaleLowerCase("lv")}
                 </p>
                 {game.location ? (
                   <p className="mt-1 flex items-start gap-1 text-sm text-muted">
@@ -563,12 +565,17 @@ function Meetings({ opponent }: { opponent: Opponent }) {
   );
 }
 
-function ColorLabel({ color }: { color: PieceColor }) {
-  if (color === "unknown") return <span>krāsa nav zināma</span>;
+function PieceMark({ color }: { color: PieceColor }) {
+  if (color === "unknown") return <span className="size-11 shrink-0" />;
+  const white = color === "white";
   return (
-    <span className="inline-flex items-center gap-1">
-      <Knight tone={color === "white" ? "white" : "black"} className="size-4" />
-      {color === "white" ? "baltie" : "melnie"}
+    <span
+      className={
+        "grid size-11 shrink-0 place-items-center rounded-md " +
+        (white ? "bg-pine" : "border border-line bg-white")
+      }
+    >
+      <Knight tone={white ? "white" : "black"} className="size-10" />
     </span>
   );
 }

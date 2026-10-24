@@ -18,20 +18,57 @@ const UA = "ValtersAssistant/1.0 (personal chess dashboard; +https://kalns.eu)";
 const TTL_MS = 45_000;
 const MAX_TOURNAMENTS = 15;
 
-const EXTRA_TOURNAMENT: SearchHit = {
-  id: "1332728",
-  snr: "4",
-  name: "Avotiņš, Valters",
-  fideId: "0",
-  club: "",
-  fed: "LAT",
-  tournamentName: "V Chess Festival Cēsis 2026 - Turnīrs iesācējiem",
-  endDate: "",
-  rank: null,
-  rounds: null,
-  fieldSize: null,
-  playerHref: "tnr1332728.aspx?lan=1&art=9&snr=4",
-  tournamentHref: "tnr1332728.aspx?lan=1",
+const EXTRA_TOURNAMENTS: SearchHit[] = [
+  {
+    id: "1332728",
+    snr: "4",
+    name: "Avotiņš, Valters",
+    fideId: "0",
+    club: "",
+    fed: "LAT",
+    tournamentName: "V Chess Festival Cēsis 2026 - Turnīrs iesācējiem",
+    endDate: "",
+    rank: null,
+    rounds: null,
+    fieldSize: null,
+    playerHref: "tnr1332728.aspx?lan=1&art=9&snr=4",
+    tournamentHref: "tnr1332728.aspx?lan=1",
+  },
+  {
+    id: "1438074",
+    snr: "4",
+    name: "Avotiņš, Valters",
+    fideId: "0",
+    club: "",
+    fed: "LAT",
+    tournamentName: "SmartCup 2026 - I posms (D turnīrs - iesācēji)",
+    endDate: "",
+    rank: null,
+    rounds: null,
+    fieldSize: null,
+    playerHref: "tnr1438074.aspx?lan=1&art=9&snr=4",
+    tournamentHref: "tnr1438074.aspx?lan=1",
+  },
+  {
+    id: "1374865",
+    snr: "2",
+    name: "Avotiņš, Valters",
+    fideId: "0",
+    club: "",
+    fed: "LAT",
+    tournamentName: "Šahatons 2026- D",
+    endDate: "",
+    rank: null,
+    rounds: null,
+    fieldSize: null,
+    playerHref: "tnr1374865.aspx?lan=1&art=9&snr=2",
+    tournamentHref: "tnr1374865.aspx?lan=1",
+  },
+];
+
+const EXTRA_PLACE: Record<string, string> = {
+  "1332728": "Cēsis",
+  "1374865": "Rīga",
 };
 
 type CacheEntry = { at: number; result: Extract<LoadResult, { ok: true }> };
@@ -119,8 +156,8 @@ async function searchPlayer(): Promise<SearchHit[]> {
 }
 
 function withExtraTournaments(hits: SearchHit[]): SearchHit[] {
-  if (hits.some((hit) => hit.id === EXTRA_TOURNAMENT.id)) return hits;
-  return [...hits, EXTRA_TOURNAMENT];
+  const seen = new Set(hits.map((hit) => hit.id));
+  return [...hits, ...EXTRA_TOURNAMENTS.filter((hit) => !seen.has(hit.id))];
 }
 
 function dateFromStamp(stamp: string): string {
@@ -220,8 +257,9 @@ export async function loadDossier(refresh: boolean): Promise<LoadResult> {
       4,
       ({ hit, index }) => resolveNextGame(hit, cards[index] ?? null, metas[index] ?? null, today),
     );
+    const extraIds = new Set(EXTRA_TOURNAMENTS.map((hit) => hit.id));
     const preparedHits = hits.map((hit, index) => {
-      if (hit.id !== EXTRA_TOURNAMENT.id) return hit;
+      if (!extraIds.has(hit.id)) return hit;
       const card = cards[index];
       const meta = metas[index];
       return {
@@ -230,16 +268,16 @@ export async function loadDossier(refresh: boolean): Promise<LoadResult> {
         endDate: hit.endDate || meta?.eventDate || dateFromStamp(meta?.lastUpdate ?? ""),
         rank: card?.rank ?? hit.rank,
         rounds: card?.games.length || hit.rounds,
-        fieldSize: 34,
-        club: hit.club,
+        fieldSize: meta?.fieldSize ?? hit.fieldSize,
         fed: "LAT",
       };
     });
     const preparedMetas = metas.map((meta, index) => {
-      if (hits[index]?.id !== EXTRA_TOURNAMENT.id || !meta) return meta;
+      const hit = hits[index];
+      if (!hit || !extraIds.has(hit.id) || !meta) return meta;
       return {
         ...meta,
-        location: meta.location || "Cēsis",
+        location: meta.location || EXTRA_PLACE[hit.id] || "",
         eventDate: meta.eventDate || dateFromStamp(meta.lastUpdate),
         roundsScheduled: meta.roundsScheduled ?? cards[index]?.games.length ?? null,
       };

@@ -261,12 +261,14 @@ export function parsePlayerCard(html: string): CardParse {
   const rows = gameRows.length > 0 ? gameRows : extractRows(html, "CRg");
   for (const row of rows) {
     const cells = splitCells(row);
-    if (cells.length < 10) continue;
+    if (cells.length < 9) continue;
     const opponent = cellText(cells[4]);
     if (!opponent) continue;
-    const colorClass = cells[9].match(/class="(Farbe[^"]*)"/i)?.[1] ?? "";
+    const withClub = cells.length >= 10;
+    const resultCell = cells[withClub ? 9 : 8];
+    const colorClass = resultCell.match(/class="(Farbe[^"]*)"/i)?.[1] ?? "";
     const color: PieceColor = /Farbew/i.test(colorClass) ? "white" : colorClass ? "black" : "unknown";
-    const resultRaw = cellText(cells[9]);
+    const resultRaw = cellText(resultCell);
     const parsed = parseResult(resultRaw);
     const rating = parsePoints(cellText(cells[5]));
     games.push({
@@ -276,8 +278,8 @@ export function parsePlayerCard(html: string): CardParse {
       opponentTitle: cellText(cells[3]),
       opponentRating: rating && rating > 0 ? rating : null,
       opponentFed: cellText(cells[6]),
-      opponentClub: cellText(cells[7]),
-      opponentPoints: parsePoints(cellText(cells[8])),
+      opponentClub: withClub ? cellText(cells[7]) : "",
+      opponentPoints: parsePoints(cellText(cells[withClub ? 8 : 7])),
       result: parsed.result,
       resultRaw,
       score: parsed.score,
@@ -304,6 +306,7 @@ export type TournamentMeta = {
   lastUpdate: string;
   eventDate: string;
   roundsScheduled: number | null;
+  fieldSize: number | null;
 };
 
 export function parseTournamentMeta(html: string): TournamentMeta {
@@ -312,14 +315,17 @@ export function parseTournamentMeta(html: string): TournamentMeta {
   );
   const timeMatch = flat.match(/Time control(?:\s*\(([^)]+)\))?\s+(.+?)\s+Location/i);
   const rounds = flat.match(/Number of rounds\s+(\d+)/i)?.[1];
+  const starters = html.match(/class="CRng[12] LAT"|class="CRg[12] LAT"/g)?.length ?? 0;
+  const uploaded = flat.match(/Creator\/Last Upload:\s*(.+?)(?:\s+Search\b|\s+Player\b|\s+Logged\b|$)/i)?.[1]?.trim() ?? "";
   return {
     name: pageTitle(html),
     location: flat.match(/Location\s+(.+?)\s+Number of rounds/i)?.[1]?.trim() ?? "",
     timeControl: [timeMatch?.[1], timeMatch?.[2]].filter(Boolean).join(" · "),
-    organizer: flat.match(/Organizer\(s\)\s+(.+?)\s+Federation/i)?.[1]?.trim() ?? "",
+    organizer: flat.match(/Organizer\(s\)\s+(.+?)\s+Federation/i)?.[1]?.trim() || uploaded,
     lastUpdate: flat.match(/Last update\s+([^,]+)/i)?.[1]?.trim() ?? "",
     eventDate: isoDate(flat.match(/\bDate\s+(\d{4}\/\d{2}\/\d{2})/i)?.[1] ?? ""),
     roundsScheduled: rounds ? Number(rounds) : null,
+    fieldSize: starters > 0 ? starters : null,
   };
 }
 
@@ -439,7 +445,7 @@ export function buildDossier(input: {
       endDate,
       rank: card?.rank ?? hit.rank,
       rounds: hit.rounds,
-      fieldSize: hit.fieldSize,
+      fieldSize: hit.fieldSize ?? meta?.fieldSize ?? null,
       club: hit.club,
       fed: hit.fed,
       points: card?.points ?? null,
