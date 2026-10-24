@@ -38,13 +38,13 @@ Pārlūks: http://127.0.0.1:8080. Node variantā dati glabājas `.cache/valters`
 
 ```sh
 npm run dev:cloudflare
-npm run build:cloudflare
+npm run build
 npm run deploy
 ```
 
 `wrangler.jsonc` satur `CHESS_CACHE` Durable Object saistījumu un SQLite migrāciju. Visas Worker instances izmanto vienu objektu `valters-source-v2`, tādēļ apmeklētāju un ierīču skaits nepavairo avota pieprasījumus. Objekts glabā kešatmiņu un aiztures pastāvīgā storage.
 
-Cloudflare Git savienojumam: build komanda `npm run build:cloudflare`, deploy komanda `npx wrangler deploy`. Esošam Worker jāsaglabā tā pašreizējais nosaukums laukā `name` un esošie domēna/Access iestatījumi. Jauna konfigurācija pati nepārceļ domēnu un neizvieto lapu. Ja ieslēgta Cloudflare Access aizsardzība, tā jāpiemēro visai lietotnei, ieskaitot servera funkcijas. `AuthProvider` nav autentifikācijas mehānisms.
+Cloudflare Git savienojumam: build komanda `npm run build`, deploy komanda `npm run deploy`. Arī `npm run build:cloudflare` paliek pieejama. Parastā būve pēc noklusējuma veido Cloudflare variantu; Node servera būvei jālieto `npm run build:node`. Izvietošanas komanda skaidri izmanto saknes `wrangler.jsonc`, pati palaiž būvi un augšupielādē `dist/server/index.js` kopā ar `dist/client` resursiem; tā nekompilē TanStack pirmkodu ar Wrangler bundleri. Esošam Worker jāsaglabā tā pašreizējais nosaukums laukā `name` un esošie domēna/Access iestatījumi. Jauna konfigurācija pati nepārceļ domēnu un neizvieto lapu. Ja ieslēgta Cloudflare Access aizsardzība, tā jāpiemēro visai lietotnei, ieskaitot servera funkcijas. `AuthProvider` nav autentifikācijas mehānisms.
 
 ## Statistikas precizitāte
 
@@ -60,9 +60,15 @@ Paziņojumi ir papildiespēja aktīvai lapai, neatkarīga no automātiskās datu
 
 ```sh
 npm run check
-npm run build:cloudflare
+npm run test:deploy
 npx playwright install chromium
 npm run test:visual
 ```
 
 Node testi izmanto saglabātus HTML piemērus, kontrolētu pulksteni un viltotu avotu. Tie pārbauda parsēšanu, statistiku, datumu robežas, vienlaicīgus apmeklējumus, servera pārstartēšanu, aiztures un avota atteikumus. Pārlūka testi izmanto izolētu, iepriekš aizpildītu kešatmiņu `.cache/visual`, nevis avota lapu ielādi. Tie pārbauda 375/768/1440 px, abas tēmas, navigāciju, filtrus un ikonas. GitHub Actions palaiž šīs pārbaudes automātiski.
+
+### TanStack virtuālo moduļu kļūdas izvietošanā
+
+`#tanstack-router-entry`, `#tanstack-start-entry` un `tanstack-start-manifest:v` ir Vite ģenerēti moduļi. Tiem nav jāpievieno manuāli alias ieraksti. Ja vecā Cloudflare būve tos nevar atrast, iestati build komandu `npm run build`, deploy komandu `npm run deploy` un atkārto būvi no jaunākā `main` komita. Deploy saknes konfigurācija ar `no_bundle` izmanto jau sakompilēto rezultātu. Vite adapteris ignorē Wrangler izvietošanas laukus `build`, `no_bundle`, `rules`; Vite izdotais brīdinājums par šiem laukiem ir paredzēts un neaptur būvi.
+
+`npm run test:deploy` pārbauda `wrangler deploy --dry-run` atsevišķā pagaidu direktorijā bez `dist` un `.wrangler`, tādēļ lokāli saglabāta iepriekšējās būves konfigurācija nevar noslēpt šo kļūdu. Pārbaude neko neizvieto un nepieprasa chess-results lapas.

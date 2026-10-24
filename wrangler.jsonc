@@ -1,10 +1,44 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "valters-sahs",
-  "main": "src/worker.ts",
+  "main": "dist/server/index.js",
   "compatibility_date": "2026-10-24",
-  "compatibility_flags": ["nodejs_compat"],
-  "durable_objects": { "bindings": [{ "name": "CHESS_CACHE", "class_name": "ChessCache" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChessCache"] }],
-  "observability": { "enabled": true }
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHESS_CACHE",
+        "class_name": "ChessCache"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "ChessCache"
+      ]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "no_bundle": true,
+  "build": {
+    "command": "npm run build"
+  },
+  "assets": {
+    "directory": "dist/client"
+  },
+  "rules": [
+    {
+      "type": "ESModule",
+      "globs": [
+        "**/*.js",
+        "**/*.mjs"
+      ]
+    }
+  ]
 }
