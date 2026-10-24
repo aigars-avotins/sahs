@@ -308,7 +308,7 @@ function TopBar({
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
       <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => window.location.reload()}
@@ -317,13 +317,7 @@ function TopBar({
             >
               <Knight tone="white" className="size-10 p-0.5" />
             </button>
-            <div className="min-w-0">
-              <h1 className="pt-1 text-2xl leading-tight sm:text-3xl">{DISPLAY_NAME}</h1>
-              <p className="mt-1 text-sm leading-snug text-muted">
-                FIDE {dossier.player.fideId}
-                {dossier.player.club ? ` · ${dossier.player.club}` : ""}
-              </p>
-            </div>
+            <h1 className="min-w-0 text-2xl leading-tight sm:text-3xl">{DISPLAY_NAME}</h1>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <div className="flex items-center gap-2">
@@ -353,6 +347,10 @@ function TopBar({
             </p>
           </div>
         </div>
+        <p className="mt-1 whitespace-nowrap pl-14 text-[13px] leading-none text-muted sm:text-sm">
+          FIDE {dossier.player.fideId}
+          {dossier.player.club ? ` · ${dossier.player.club}` : ""}
+        </p>
       </div>
       {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
       <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 sm:px-4">
