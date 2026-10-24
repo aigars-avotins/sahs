@@ -284,11 +284,7 @@ function TopBar({
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-6">
         <Knight tone="white" className="size-10 shrink-0 rounded-lg bg-pine p-0.5" />
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl sm:text-2xl">{DISPLAY_NAME}</h1>
-          <p className="hidden truncate text-sm text-muted sm:block">
-            FIDE {dossier.player.fideId}
-            {dossier.player.club ? ` · ${dossier.player.club}` : ""}
-          </p>
+          <h1 className="truncate text-2xl sm:text-3xl">{DISPLAY_NAME}</h1>
         </div>
         <button
           type="button"
@@ -314,9 +310,9 @@ function TopBar({
             {loading ? "Notiek" : `Dati ${fresh}`}
           </p>
         </div>
-        <p className="w-full text-sm text-muted sm:hidden">
+        <p className="w-full truncate text-sm text-muted">
           FIDE {dossier.player.fideId}
-          {dossier.player.club ? <span className="mt-0.5 block break-words">{dossier.player.club}</span> : null}
+          {dossier.player.club ? ` · ${dossier.player.club}` : ""}
         </p>
       </div>
       {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
