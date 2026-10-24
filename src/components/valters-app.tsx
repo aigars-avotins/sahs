@@ -880,48 +880,23 @@ function TournamentCard({
 function GameTable({ games }: { games: Game[] }) {
   if (games.length === 0) return <p className="text-sm text-muted">Partijas vēl nav publicētas.</p>;
   return (
-    <div>
-      <div className="mb-2 hidden grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_9rem] gap-3 px-3 text-xs font-medium text-muted sm:grid">
-        <span>Kārta</span>
-        <span>Pretinieks</span>
-        <span>Krāsa</span>
-        <span>Galds</span>
-        <span>Rezultāts</span>
-      </div>
-      <ol className="grid gap-2">
-        {games.map((game) => (
-          <li key={`${game.tournamentId}-${game.round}-${game.opponent}`} className="rounded-xl bg-bg px-3 py-3">
-            <div className="flex items-start justify-between gap-3 sm:hidden">
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{game.opponent}</span>
-                {game.opponentClub ? <span className="block truncate text-sm text-muted">{game.opponentClub}</span> : null}
-              </span>
-              <ResultMark result={game.result} labeled />
-            </div>
-            <p className="mt-1 flex items-center gap-2 text-sm text-muted sm:hidden">
-              <PieceMark color={game.color} />
-              <span>
-                {game.round}. kārta · {colorName(game.color).toLocaleLowerCase("lv")}
-                {game.board > 0 ? ` · ${game.board}. galds` : ""}
-              </span>
-            </p>
-            <div className="hidden items-center gap-3 sm:grid sm:grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_9rem]">
-              <span className="text-sm text-muted tabular-nums">{game.round}.</span>
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{game.opponent}</span>
-                {game.opponentClub ? <span className="block truncate text-sm text-muted">{game.opponentClub}</span> : null}
-              </span>
-              <span className="inline-flex items-center gap-2 text-sm">
-                <PieceMark color={game.color} />
-                <span className="sr-only">{colorName(game.color)}</span>
-              </span>
-              <span className="text-sm tabular-nums">{game.board > 0 ? game.board : "—"}</span>
-              <ResultMark result={game.result} labeled />
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
+    <ol className="grid gap-1.5">
+      {games.map((game) => (
+        <li
+          key={`${game.tournamentId}-${game.round}-${game.opponent}`}
+          className="flex items-center gap-2 rounded-xl bg-bg px-2 py-1.5"
+        >
+          <span className="w-6 shrink-0 text-sm text-muted tabular-nums">{game.round}.</span>
+          <span className="min-w-0 flex-1 truncate text-sm">
+            <span className="font-medium">{game.opponent}</span>
+            {game.opponentClub ? <span className="text-muted"> · {game.opponentClub}</span> : null}
+          </span>
+          <PieceMark color={game.color} compact />
+          <span className="w-5 shrink-0 text-right text-sm text-muted tabular-nums">{game.board > 0 ? game.board : ""}</span>
+          <ResultMark result={game.result} labeled />
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -998,17 +973,19 @@ function Meetings({ opponent }: { opponent: Opponent }) {
   );
 }
 
-function PieceMark({ color }: { color: PieceColor }) {
-  if (color === "unknown") return <span className="size-11 shrink-0" />;
+function PieceMark({ color, compact = false }: { color: PieceColor; compact?: boolean }) {
+  if (color === "unknown") return <span className={compact ? "size-7 shrink-0" : "size-11 shrink-0"} />;
   const white = color === "white";
   return (
     <span
       className={
-        "grid size-11 shrink-0 place-items-center rounded-md " +
+        "grid shrink-0 place-items-center rounded-md " +
+        (compact ? "size-7 " : "size-11 ") +
         (white ? "bg-pine" : "border border-line bg-white")
       }
     >
-      <Knight tone={white ? "white" : "black"} className="size-10" />
+      <Knight tone={white ? "white" : "black"} className={compact ? "size-6" : "size-10"} />
+      <span className="sr-only">{colorName(color)}</span>
     </span>
   );
 }
@@ -1024,7 +1001,7 @@ function ResultMark({ result, labeled = false }: { result: GameResult; labeled?:
     <span
       title={view.name}
       aria-hidden={labeled}
-      className={`grid size-11 place-items-center rounded-full text-sm font-medium tabular-nums ${view.cls}`}
+      className={`grid size-8 shrink-0 place-items-center rounded-full text-sm font-medium tabular-nums ${view.cls}`}
     >
       {view.label}
     </span>
@@ -1037,7 +1014,7 @@ function ResultMark({ result, labeled = false }: { result: GameResult; labeled?:
     );
   }
   return (
-    <span className="inline-flex items-center gap-2" aria-label={`${view.label}, ${view.name}`}>
+    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap" aria-label={`${view.label}, ${view.name}`}>
       {mark}
       <span className="text-sm">{view.name}</span>
     </span>
