@@ -721,10 +721,11 @@ function Charts({ dossier }: { dossier: Dossier }) {
   return (
     <section className="mt-8">
       <SectionTitle title="Grafiki" hint="šodiena, bilance un krāsas" />
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-2">
         {today && today.games.length > 0 ? <RoundBars tournament={today} /> : null}
         <BalanceBar dossier={dossier} />
-        <ColorBars games={games} />
+        <ColorSplit title="Krāsas" hint="visas partijas" games={games} />
+        <ColorSplit title="Krāsas uzvarās" hint="tikai uzvarētās partijas" games={games.filter((game) => game.result === "win")} />
       </div>
     </section>
   );
@@ -789,7 +790,7 @@ function BalanceBar({ dossier }: { dossier: Dossier }) {
   );
 }
 
-function ColorBars({ games }: { games: Game[] }) {
+function ColorSplit({ title, hint, games }: { title: string; hint: string; games: Game[] }) {
   const total = games.length;
   const counts = {
     white: games.filter((game) => game.color === "white").length,
@@ -800,33 +801,39 @@ function ColorBars({ games }: { games: Game[] }) {
     { key: "white" as const, label: "Baltie", value: counts.white, cls: "bg-white shadow-[inset_0_0_0_1px_#1e4a38]" },
     { key: "black" as const, label: "Melnie", value: counts.black, cls: "bg-pine" },
     { key: "unknown" as const, label: "Krāsa nav norādīta", value: counts.unknown, cls: "bg-line" },
-  ].filter((part) => part.value > 0);
+  ];
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Krāsas</h3>
-      <p className="mt-1 text-sm text-muted">{total} partijas</p>
+      <h3 className="text-xl">{title}</h3>
+      <p className="mt-1 text-sm text-muted">
+        {hint} · {total}
+      </p>
       <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-bg-deep">
-        {parts.map((part) => (
-          <div key={part.key} className={part.cls} style={{ width: `${total ? (part.value / total) * 100 : 0}%` }} />
-        ))}
+        {parts.map((part) =>
+          part.value > 0 ? (
+            <div key={part.key} className={part.cls} style={{ width: `${total ? (part.value / total) * 100 : 0}%` }} />
+          ) : null,
+        )}
       </div>
       <ul className="mt-3 grid gap-2 text-sm">
-        {parts.map((part) => (
-          <li key={part.key} className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-2">
-              {part.key === "unknown" ? (
-                <span className="size-5 rounded-sm bg-line" />
-              ) : (
-                <Knight tone={part.key} className="size-5" />
-              )}
-              {part.label}
-            </span>
-            <span className="tabular-nums">
-              {part.value}
-              <span className="text-muted"> no {total}</span>
-            </span>
-          </li>
-        ))}
+        {parts
+          .filter((part) => part.key !== "unknown" || part.value > 0)
+          .map((part) => (
+            <li key={part.key} className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2">
+                {part.key === "unknown" ? (
+                  <span className="size-5 rounded-sm bg-line" />
+                ) : (
+                  <Knight tone={part.key} className="size-5" />
+                )}
+                {part.label}
+              </span>
+              <span className="tabular-nums">
+                {part.value}
+                <span className="text-muted"> no {total}</span>
+              </span>
+            </li>
+          ))}
       </ul>
     </div>
   );
