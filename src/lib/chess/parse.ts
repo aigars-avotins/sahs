@@ -5,6 +5,7 @@ import type {
   GameResult,
   Opponent,
   PieceColor,
+  NextGame,
   Tournament,
 } from "./types";
 
@@ -78,7 +79,7 @@ export function formatPoints(value: number | null): string {
 }
 
 export function formatDate(value: string): string {
-  const match = value.match(/^(\d{4})[.\/-](\d{2})[.\/-](\d{2})/);
+  const match = value.match(/^(\d{4})[./-](\d{2})[./-](\d{2})/);
   if (!match) return value || "—";
   return `${match[3]}.${match[2]}.${match[1]}`;
 }
@@ -320,6 +321,68 @@ export function parseTournamentMeta(html: string): TournamentMeta {
   };
 }
 
+export type RoundSeat = NextGame & { pending: boolean };
+
+function pairingIsPending(raw: string): boolean {
+  const text = raw.replace(/\s/g, "");
+  if (!text || /^[-–:.*]+$/.test(text)) return true;
+  return !/[01½+]/.test(text) && !text.includes("1/2");
+}
+
+export function parseRoundPairing(
+  html: string,
+  snr: string,
+  round: number,
+  pageUrl: string,
+): RoundSeat | null {
+  const wanted = snr.trim();
+  if (!wanted) return null;
+  for (const row of extractRows(html, "CRng")) {
+    const cells = splitCells(row);
+    if (cells.length < 10) continue;
+    const whiteSnr = cells[4]?.match(/[?&]snr=(\d+)/i)?.[1] || cellText(cells[1] ?? "");
+    const blackSnr = cells[12]?.match(/[?&]snr=(\d+)/i)?.[1] || cellText(cells[17] ?? "");
+    const isWhite = whiteSnr === wanted;
+    const isBlack = blackSnr === wanted;
+    if (!isWhite && !isBlack) continue;
+    const opponentCell = isWhite ? cells[12] : cells[4];
+    const opponent = cellText(opponentCell ?? "") || "brīvs";
+    const rating = parsePoints(cellText(isWhite ? (cells[15] ?? "") : (cells[7] ?? "")));
+    return {
+      round,
+      board: parsePoints(cellText(cells[0] ?? "")) ?? 0,
+      color: isWhite ? "white" : "black",
+      opponent,
+      opponentTitle: cellText(isWhite ? (cells[11] ?? "") : (cells[3] ?? "")),
+      opponentRating: rating && rating > 0 ? rating : null,
+      opponentFed: cellText(isWhite ? (cells[14] ?? "") : (cells[6] ?? "")),
+      opponentPoints: parsePoints(cellText(isWhite ? (cells[10] ?? "") : (cells[8] ?? ""))),
+      url: pageUrl,
+      pending: pairingIsPending(cellText(cells[9] ?? "")),
+    };
+  }
+  return null;
+}
+
+export function pendingGameFromCard(card: CardParse | null, playerHref: string): NextGame | null {
+  if (!card) return null;
+  const game = card.games
+    .filter((row) => row.result === "unknown" && row.opponent)
+    .sort((a, b) => b.round - a.round)[0];
+  if (!game) return null;
+  return {
+    round: game.round,
+    board: game.board,
+    color: game.color,
+    opponent: game.opponent,
+    opponentTitle: game.opponentTitle,
+    opponentRating: game.opponentRating,
+    opponentFed: game.opponentFed,
+    opponentPoints: game.opponentPoints,
+    url: absoluteChessUrl(playerHref),
+  };
+}
+
 function absoluteChessUrl(href: string): string {
   if (!href) return "https://chess-results.com/";
   if (href.startsWith("http")) return href;
@@ -342,6 +405,7 @@ export function buildDossier(input: {
   hits: SearchHit[];
   cards: Array<CardParse | null>;
   metas: Array<TournamentMeta | null>;
+  nextGames: Array<NextGame | null>;
   fetchedAt: string;
   today: string;
   fideId: string;
@@ -358,12 +422,19 @@ export function buildDossier(input: {
       tournamentDate: hit.endDate || meta?.eventDate || "",
       location,
     }));
+    const nextGame = input.nextGames[index] ?? null;
+    const endDate = hit.endDate || meta?.eventDate || "";
+    const scoredRounds = new Set(
+      games.filter((game) => game.score != null).map((game) => game.round),
+    ).size;
+    const scheduled = meta?.roundsScheduled ?? null;
+    const live = Boolean(endDate) && endDate >= input.today;
     return {
       id: hit.id,
       name,
       url: absoluteChessUrl(hit.tournamentHref || `tnr${hit.id}.aspx?lan=1`),
       playerUrl: absoluteChessUrl(hit.playerHref),
-      endDate: hit.endDate || meta?.eventDate || "",
+      endDate,
       rank: card?.rank ?? hit.rank,
       rounds: hit.rounds,
       fieldSize: hit.fieldSize,
@@ -377,8 +448,10 @@ export function buildDossier(input: {
       timeControl: meta?.timeControl ?? "",
       organizer: meta?.organizer ?? "",
       lastUpdate: meta?.lastUpdate ?? "",
-      roundsScheduled: meta?.roundsScheduled ?? null,
+      roundsScheduled: scheduled,
       partial: card == null,
+      awaitingPairing: Boolean(live && !nextGame && scheduled != null && scoredRounds < scheduled),
+      nextGame,
       games,
     };
   });

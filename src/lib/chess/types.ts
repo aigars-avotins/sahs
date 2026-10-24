@@ -21,6 +21,18 @@ export type Game = {
   location: string;
 };
 
+export type NextGame = {
+  round: number;
+  board: number;
+  color: PieceColor;
+  opponent: string;
+  opponentTitle: string;
+  opponentRating: number | null;
+  opponentFed: string;
+  opponentPoints: number | null;
+  url: string;
+};
+
 export type Tournament = {
   id: string;
   name: string;
@@ -42,6 +54,8 @@ export type Tournament = {
   lastUpdate: string;
   roundsScheduled: number | null;
   partial: boolean;
+  awaitingPairing: boolean;
+  nextGame: NextGame | null;
   games: Game[];
 };
 

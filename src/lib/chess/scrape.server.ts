@@ -2,12 +2,16 @@ import {
   buildDossier,
   decodeEntities,
   parsePlayerCard,
+  parseRoundPairing,
   parseSearchResults,
   parseTournamentMeta,
+  pendingGameFromCard,
   rigaToday,
+  type CardParse,
   type SearchHit,
+  type TournamentMeta,
 } from "./parse";
-import type { LoadResult } from "./types";
+import type { LoadResult, NextGame } from "./types";
 
 const FIDE_ID = "11662255";
 const UA = "ValtersAssistant/1.0 (personal chess dashboard; +https://kalns.eu)";
@@ -117,12 +121,54 @@ async function fetchHtml(url: string): Promise<string> {
   return html;
 }
 
+async function resolveNextGame(
+  hit: SearchHit,
+  card: CardParse | null,
+  meta: TournamentMeta | null,
+  today: string,
+): Promise<NextGame | null> {
+  const end = hit.endDate || meta?.eventDate || "";
+  if (!end || end < today) return null;
+  const fromCard = pendingGameFromCard(card, hit.playerHref);
+  if (fromCard) return fromCard;
+  const scheduled = meta?.roundsScheduled ?? null;
+  let round = (card?.games.reduce((max, game) => Math.max(max, game.round), 0) ?? 0) + 1;
+  if (round < 1) round = 1;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (scheduled != null && round > scheduled) return null;
+    try {
+      const url = `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=2&rd=${round}&flag=30`;
+      const html = await fetchHtml(url);
+      const seat = parseRoundPairing(html, hit.snr, round, url);
+      if (!seat) return null;
+      if (seat.pending) {
+        return {
+          round: seat.round,
+          board: seat.board,
+          color: seat.color,
+          opponent: seat.opponent,
+          opponentTitle: seat.opponentTitle,
+          opponentRating: seat.opponentRating,
+          opponentFed: seat.opponentFed,
+          opponentPoints: seat.opponentPoints,
+          url: seat.url,
+        };
+      }
+      round += 1;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export async function loadDossier(refresh: boolean): Promise<LoadResult> {
   if (!refresh && cache && Date.now() - cache.at < TTL_MS) {
     return cache.result;
   }
   try {
     const hits = await searchPlayer();
+    const today = rigaToday();
     const [cards, metas] = await Promise.all([
       mapPool(hits, 4, async (hit) => {
         try {
@@ -143,12 +189,18 @@ export async function loadDossier(refresh: boolean): Promise<LoadResult> {
         }
       }),
     ]);
+    const nextGames = await mapPool(
+      hits.map((hit, index) => ({ hit, index })),
+      4,
+      ({ hit, index }) => resolveNextGame(hit, cards[index] ?? null, metas[index] ?? null, today),
+    );
     const dossier = buildDossier({
       hits,
       cards,
       metas,
+      nextGames,
       fetchedAt: new Date().toISOString(),
-      today: rigaToday(),
+      today,
       fideId: FIDE_ID,
     });
     const result: Extract<LoadResult, { ok: true }> = {
