@@ -2,8 +2,10 @@ import {
   buildDossier,
   decodeEntities,
   parsePlayerCard,
+  parseRoundClock,
   parseRoundPairing,
   parseSearchResults,
+  parseStandings,
   parseTournamentMeta,
   pendingGameFromCard,
   rigaToday,
@@ -193,7 +195,17 @@ async function resolveNextGame(
   const end = hit.endDate || meta?.eventDate || "";
   if (!end || end < today) return null;
   const fromCard = pendingGameFromCard(card, hit.playerHref);
-  if (fromCard) return fromCard;
+  if (fromCard) {
+    try {
+      const url = `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=2&rd=${fromCard.round}&flag=30`;
+      const html = await fetchHtml(url);
+      fromCard.publishedAt = parseRoundClock(html);
+      fromCard.url = url;
+    } catch {
+      /* the pairing on the card is enough */
+    }
+    return fromCard;
+  }
   const scheduled = meta?.roundsScheduled ?? null;
   let round = (card?.games.reduce((max, game) => Math.max(max, game.round), 0) ?? 0) + 1;
   if (round < 1) round = 1;
@@ -215,6 +227,7 @@ async function resolveNextGame(
           opponentFed: seat.opponentFed,
           opponentPoints: seat.opponentPoints,
           url: seat.url,
+          publishedAt: parseRoundClock(html),
         };
       }
       round += 1;
@@ -257,6 +270,34 @@ export async function loadDossier(refresh: boolean): Promise<LoadResult> {
       4,
       ({ hit, index }) => resolveNextGame(hit, cards[index] ?? null, metas[index] ?? null, today),
     );
+    const liveExtras = await mapPool(
+      hits.map((hit, index) => ({ hit, index })),
+      4,
+      async ({ hit, index }) => {
+        const end = hit.endDate || metas[index]?.eventDate || "";
+        if (!end || end < today) return { standings: null, lastRoundAt: "" };
+        let standings = null;
+        try {
+          const html = await fetchHtml(`https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=1`);
+          standings = parseStandings(html, cards[index]?.name || hit.name);
+        } catch {
+          standings = null;
+        }
+        let lastRoundAt = "";
+        const lastRound = cards[index]?.games.reduce((max, game) => Math.max(max, game.round), 0) ?? 0;
+        if (!nextGames[index]?.publishedAt && lastRound > 0) {
+          try {
+            const html = await fetchHtml(
+              `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=2&rd=${lastRound}&flag=30`,
+            );
+            lastRoundAt = parseRoundClock(html);
+          } catch {
+            lastRoundAt = "";
+          }
+        }
+        return { standings, lastRoundAt };
+      },
+    );
     const extraIds = new Set(EXTRA_TOURNAMENTS.map((hit) => hit.id));
     const preparedHits = hits.map((hit, index) => {
       if (!extraIds.has(hit.id)) return hit;
@@ -287,6 +328,8 @@ export async function loadDossier(refresh: boolean): Promise<LoadResult> {
       cards,
       metas: preparedMetas,
       nextGames,
+      standings: liveExtras.map((extra) => extra.standings),
+      lastRoundAt: liveExtras.map((extra) => extra.lastRoundAt),
       fetchedAt: new Date().toISOString(),
       today,
       fideId: FIDE_ID,

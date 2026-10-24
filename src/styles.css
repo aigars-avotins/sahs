@@ -45,3 +45,40 @@
     text-wrap: balance;
   }
 }
+
+html[data-theme="dark"] {
+  --color-bg: #101a16;
+  --color-bg-deep: #1a2822;
+  --color-surface: #17241e;
+  --color-ink: #f4f7f5;
+  --color-muted: #b7c6be;
+  --color-line: #2c443a;
+  --color-pine-soft: #24382e;
+  --color-brass: #d7efe4;
+  --color-loss: #e08a82;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .text-pine {
+  color: #d7efe4;
+}
+
+html[data-theme="dark"] .border-pine {
+  border-color: #7dba9a;
+}
+
+html[data-theme="dark"] .bg-white {
+  background-color: var(--color-surface);
+}
+
+html[data-theme="dark"] .bg-white\/95 {
+  background-color: color-mix(in srgb, var(--color-surface) 95%, transparent);
+}
+
+.page-veil {
+  background: rgb(255 255 255 / 0.1);
+}
+
+html[data-theme="dark"] .page-veil {
+  background: rgb(8 14 11 / 0.72);
+}

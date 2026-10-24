@@ -31,6 +31,19 @@ export type NextGame = {
   opponentFed: string;
   opponentPoints: number | null;
   url: string;
+  publishedAt: string;
+};
+
+export type StandingRow = {
+  rank: number;
+  name: string;
+  points: number | null;
+  club: string;
+};
+
+export type Standings = {
+  above: StandingRow | null;
+  below: StandingRow | null;
 };
 
 export type Tournament = {
@@ -56,6 +69,8 @@ export type Tournament = {
   partial: boolean;
   awaitingPairing: boolean;
   nextGame: NextGame | null;
+  standings: Standings | null;
+  lastRoundAt: string;
   games: Game[];
 };
 

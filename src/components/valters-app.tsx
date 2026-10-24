@@ -6,6 +6,9 @@ import {
   MapPin,
   RefreshCw,
   Search,
+  Sun,
+  Moon,
+  Copy,
   Trophy,
 } from "lucide-react";
 import { Knight } from "@/components/knight";
@@ -18,6 +21,7 @@ import {
   shouldWatch,
   showPairingNotification,
   storedPairings,
+  unlockSound,
 } from "@/lib/chess/alerts";
 import { getDossier } from "@/lib/chess/dossier";
 import {
@@ -91,12 +95,42 @@ function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<v
       /* page notification still works */
     }
     localStorage.setItem(ALERT_KEY, "1");
+    unlockSound();
     if (dossier) rememberPairings(pairingKeys(dossier));
     setEnabled(true);
-    setNote("Ieslēgts. Kamēr lapa ir atvērta, telefons paziņos par jaunu galdiņu.");
+    setNote("Ieslēgts. Kamēr lapa ir atvērta, telefons paziņos un iezvanīs par jaunu galdiņu.");
   }
 
   return { enabled, note, toggle };
+}
+
+const NOTES_KEY = "valters-notes";
+
+function noteId(game: Game): string {
+  return `${game.tournamentId}:${game.round}:${game.opponent}`;
+}
+
+function useNotes(): { notes: Record<string, string>; save: (id: string, text: string) => void } {
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(NOTES_KEY) || "{}") as Record<string, string>;
+      if (parsed && typeof parsed === "object") setNotes(parsed);
+    } catch {
+      setNotes({});
+    }
+  }, []);
+  function save(id: string, text: string) {
+    setNotes((current) => {
+      const next = { ...current };
+      const trimmed = text.trim();
+      if (trimmed) next[id] = trimmed;
+      else delete next[id];
+      localStorage.setItem(NOTES_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+  return { notes, save };
 }
 
 export function ValtersPending() {
@@ -141,6 +175,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
   }
 
   const alerts = usePairingAlerts(result.ok ? result.dossier : null, refreshQuiet);
+  const notes = useNotes();
 
   if (!result.ok) {
     return (
@@ -177,10 +212,12 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
             {result.dossier.partialNote}
           </p>
         ) : null}
+        <InstallHint />
         <Overview dossier={result.dossier} alerts={alerts} />
         <NextGames dossier={result.dossier} />
         <Charts dossier={result.dossier} />
-        <Board dossier={result.dossier} />
+        <Records dossier={result.dossier} />
+        <Board dossier={result.dossier} notes={notes} />
       </main>
       <footer className="mx-auto max-w-6xl px-4 pt-4 pb-10 text-sm text-muted sm:px-6">
         Dati tikai no{" "}
@@ -201,7 +238,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: "url(/bg.jpg)" }}
       />
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-white/10" />
+      <div aria-hidden className="page-veil pointer-events-none fixed inset-0 -z-10" />
       <div className="h-1 bg-pine" />
       {children}
     </div>
@@ -217,26 +254,46 @@ function TopBar({
   loading: boolean;
   onRefresh: () => void;
 }) {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    setDark(document.documentElement.dataset.theme === "dark");
+  }, []);
+  function toggleTheme() {
+    const next = document.documentElement.dataset.theme === "dark" ? "" : "dark";
+    if (next) document.documentElement.dataset.theme = "dark";
+    else delete document.documentElement.dataset.theme;
+    localStorage.setItem("valters-theme", next ? "dark" : "light");
+    setDark(Boolean(next));
+  }
+  const live = dossier.tournaments.find((tournament) => tournament.nextGame);
   return (
-    <header className="sticky top-0 z-10 border-b border-line bg-white/95">
+    <header className="sticky top-0 z-20 border-b border-line bg-white/95">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
         <Knight tone="white" className="size-10 shrink-0 rounded-lg bg-pine p-0.5" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{DISPLAY_NAME}</p>
-          <p className="truncate text-sm text-muted">
-            Atjaunots {formatStamp(dossier.fetchedAt)}
-          </p>
+          <p className="truncate text-sm text-muted">Atjaunots {formatStamp(dossier.fetchedAt)}</p>
         </div>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-pressed={dark}
+          className="inline-flex h-12 items-center gap-2 rounded-full border border-line bg-surface px-4 font-medium"
+        >
+          {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+          <span className="hidden sm:inline">{dark ? "Gaišs" : "Tumšs"}</span>
+        </button>
         <button
           type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="inline-flex h-11 items-center gap-2 rounded-full bg-pine px-4 font-medium text-surface disabled:opacity-60"
+          className="inline-flex h-12 items-center gap-2 rounded-full bg-pine px-5 font-medium text-surface disabled:opacity-60"
         >
           <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
           <span>{loading ? "Atjauno" : "Atjaunot"}</span>
         </button>
       </div>
+      {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
     </header>
   );
 }
@@ -273,7 +330,7 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
             onClick={() => void alerts.toggle()}
             aria-pressed={alerts.enabled}
             className={
-              "mt-5 inline-flex h-11 items-center gap-2 rounded-full px-4 font-medium " +
+              "mt-5 inline-flex h-12 items-center gap-2 rounded-full px-5 font-medium " +
               (alerts.enabled ? "border border-pine bg-white text-pine" : "bg-pine text-white")
             }
           >
@@ -282,8 +339,9 @@ function Overview({ dossier, alerts }: { dossier: Dossier; alerts: AlertState })
           </button>
           <p className="mt-2 max-w-md text-sm text-muted">
             {alerts.note ||
-              "Ieslēdz, un telefons paziņos, kad chess-results publicēs nākamo galdiņu. Lapa jātur atvērta."}
+              "Ieslēdz, un telefons paziņos un iezvanīs, kad chess-results publicēs nākamo galdiņu. Lapa jātur atvērta."}
           </p>
+          <CopySummary dossier={dossier} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -325,14 +383,60 @@ function matchesQuery(haystack: string, query: string): boolean {
   return words.every((word) => text.includes(word));
 }
 
-function Board({ dossier }: { dossier: Dossier }) {
+function Board({
+  dossier,
+  notes,
+}: {
+  dossier: Dossier;
+  notes: { notes: Record<string, string>; save: (id: string, text: string) => void };
+}) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [year, setYear] = useState("all");
+  const [pace, setPace] = useState("all");
   const needle = query.trim();
+  const years = useMemo(() => {
+    const found = new Set(dossier.tournaments.map((tournament) => tournament.endDate.slice(0, 4)).filter(Boolean));
+    return [...found].sort((a, b) => (a < b ? 1 : -1));
+  }, [dossier.tournaments]);
+
+  const scoped = useMemo(() => {
+    return dossier.tournaments.filter((tournament) => {
+      if (year !== "all" && !tournament.endDate.startsWith(year)) return false;
+      const rapid = /rapid|ātr|minut/i.test(tournament.timeControl);
+      if (pace === "rapid" && !rapid) return false;
+      if (pace === "other" && (rapid || !tournament.timeControl)) return false;
+      return true;
+    });
+  }, [dossier.tournaments, year, pace]);
+
+  const scopedOpponents = useMemo(() => {
+    if (year === "all" && pace === "all") return dossier.opponents;
+    const ids = new Set(scoped.map((tournament) => tournament.id));
+    return dossier.opponents.flatMap((opponent) => {
+      const meetings = opponent.meetings.filter((game) => ids.has(game.tournamentId));
+      if (meetings.length === 0) return [];
+      if (meetings.length === opponent.meetings.length) return [opponent];
+      let wins = 0;
+      let draws = 0;
+      let losses = 0;
+      let score = 0;
+      let scored = 0;
+      for (const game of meetings) {
+        if (game.score == null) continue;
+        scored += 1;
+        score += game.score;
+        if (game.result === "win") wins += 1;
+        if (game.result === "draw") draws += 1;
+        if (game.result === "loss") losses += 1;
+      }
+      return [{ ...opponent, meetings, games: meetings.length, wins, draws, losses, score, scored }];
+    });
+  }, [dossier.opponents, scoped, year, pace]);
 
   const tournaments = useMemo(() => {
-    if (!needle) return dossier.tournaments.map((tournament) => ({ tournament, games: tournament.games }));
-    return dossier.tournaments.flatMap((tournament) => {
+    if (!needle) return scoped.map((tournament) => ({ tournament, games: tournament.games }));
+    return scoped.flatMap((tournament) => {
       const about = [tournament.name, tournament.location, tournament.organizer, tournament.timeControl].join(" ");
       if (matchesQuery(about, needle)) return [{ tournament, games: tournament.games }];
       const games = tournament.games.filter((game) =>
@@ -340,11 +444,11 @@ function Board({ dossier }: { dossier: Dossier }) {
       );
       return games.length > 0 ? [{ tournament, games }] : [];
     });
-  }, [dossier.tournaments, needle]);
+  }, [scoped, needle]);
 
   const opponents = useMemo(() => {
-    if (!needle) return dossier.opponents;
-    return dossier.opponents.filter((opponent) =>
+    if (!needle) return scopedOpponents;
+    return scopedOpponents.filter((opponent) =>
       matchesQuery(
         [
           opponent.name,
@@ -357,15 +461,45 @@ function Board({ dossier }: { dossier: Dossier }) {
         needle,
       ),
     );
-  }, [dossier.opponents, needle]);
+  }, [scopedOpponents, needle]);
 
-  const active = opponents.find((opponent) => opponent.key === selected) ?? null;
+  const repeats = useMemo(() => {
+    const groups = new Map<string, Opponent[]>();
+    for (const opponent of opponents) {
+      const key = fold(opponent.name);
+      groups.set(key, [...(groups.get(key) ?? []), opponent]);
+    }
+    const rows: Opponent[] = [];
+    for (const group of groups.values()) {
+      const games = group.reduce((sum, opponent) => sum + opponent.games, 0);
+      if (games < 2) continue;
+      if (group.length === 1) {
+        rows.push(group[0]);
+        continue;
+      }
+      const [first] = group;
+      rows.push({
+        ...first,
+        key: `repeat:${fold(first.name)}`,
+        club: [...new Set(group.map((opponent) => opponent.club).filter(Boolean))].join(" · "),
+        games,
+        meetings: group.flatMap((opponent) => opponent.meetings),
+        wins: group.reduce((sum, opponent) => sum + opponent.wins, 0),
+        draws: group.reduce((sum, opponent) => sum + opponent.draws, 0),
+        losses: group.reduce((sum, opponent) => sum + opponent.losses, 0),
+        score: group.reduce((sum, opponent) => sum + opponent.score, 0),
+        scored: group.reduce((sum, opponent) => sum + opponent.scored, 0),
+      });
+    }
+    return rows.sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"));
+  }, [opponents]);
+  const active = repeats.find((opponent) => opponent.key === selected) ?? opponents.find((opponent) => opponent.key === selected) ?? null;
 
   return (
     <div className="mt-8 grid gap-8">
-      <div>
-        <label className="flex h-12 items-center gap-3 rounded-full border border-line bg-white px-4">
-          <Search className="size-4 text-muted" aria-hidden />
+      <div className="grid gap-3">
+        <label className="flex h-14 items-center gap-3 rounded-full border border-line bg-white px-4">
+          <Search className="size-5 text-muted" aria-hidden />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -375,8 +509,27 @@ function Board({ dossier }: { dossier: Dossier }) {
             className="w-full bg-transparent text-base outline-none placeholder:text-muted"
           />
         </label>
+        <div className="flex flex-wrap gap-2">
+          <FilterChip pressed={year === "all"} onClick={() => setYear("all")}>
+            Visi gadi
+          </FilterChip>
+          {years.map((item) => (
+            <FilterChip key={item} pressed={year === item} onClick={() => setYear(item)}>
+              {item}
+            </FilterChip>
+          ))}
+          <FilterChip pressed={pace === "all"} onClick={() => setPace("all")}>
+            Visi tempi
+          </FilterChip>
+          <FilterChip pressed={pace === "rapid"} onClick={() => setPace("rapid")}>
+            Rapids
+          </FilterChip>
+          <FilterChip pressed={pace === "other"} onClick={() => setPace("other")}>
+            Citi
+          </FilterChip>
+        </div>
         {needle ? (
-          <p className="mt-2 px-4 text-sm text-muted">
+          <p className="px-4 text-sm text-muted">
             {tournaments.length === 1 ? "1 turnīrs" : `${tournaments.length} turnīri`} ·{" "}
             {opponents.length === 1 ? "1 pretinieks" : `${opponents.length} pretinieki`}
           </p>
@@ -396,11 +549,29 @@ function Board({ dossier }: { dossier: Dossier }) {
                 games={games}
                 today={dossier.today}
                 startOpen={Boolean(needle) || (index === 0 && !needle)}
+                notes={notes}
               />
             ))}
           </div>
         )}
       </section>
+
+      {repeats.length > 0 ? (
+        <section>
+          <SectionTitle title="Atkārtoti pretinieki" hint="spēlēts vairāk nekā vienu reizi" />
+          <ul className="grid gap-2">
+            {repeats.map((opponent) => (
+              <li key={opponent.key}>
+                <OpponentRow
+                  opponent={opponent}
+                  pressed={opponent.key === selected}
+                  onSelect={() => setSelected((current) => (current === opponent.key ? null : opponent.key))}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section>
         <SectionTitle title="Pretinieki" hint={needle ? `${opponents.length} atbilst` : "cik reižu un kā veicies"} />
@@ -443,30 +614,34 @@ function TournamentCard({
   today,
   startOpen,
   games,
+  notes,
 }: {
   tournament: Tournament;
   today: string;
   startOpen: boolean;
   games: Game[];
+  notes: { notes: Record<string, string>; save: (id: string, text: string) => void };
 }) {
   const status = dayStatus(tournament.endDate, today);
   const badge = status === "today" ? "Šodien" : status === "upcoming" ? "Gaidāms" : null;
+  const medal = tournament.rank != null && tournament.rank >= 1 && tournament.rank <= 3;
   const [opened, setOpened] = useState(startOpen);
   useEffect(() => {
     setOpened(startOpen);
   }, [startOpen]);
   return (
-    <article className="min-w-0 rounded-2xl border border-line bg-surface">
-      <details
-        className="group"
-        open={opened}
-        onToggle={(event) => setOpened(event.currentTarget.open)}
-      >
+    <article className={`min-w-0 rounded-2xl border-2 bg-surface ${scoreBorder(tournament)}`}>
+      <details className="group" open={opened} onToggle={(event) => setOpened(event.currentTarget.open)}>
         <summary className="flex cursor-pointer list-none flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {badge ? (
                 <span className="rounded-full bg-pine px-2 py-0.5 text-xs font-medium text-surface">{badge}</span>
+              ) : null}
+              {medal ? (
+                <span className="rounded-full bg-pine-soft px-2 py-0.5 text-xs font-medium text-pine">
+                  {tournament.rank}. vieta
+                </span>
               ) : null}
               <h3 className="text-xl">{tournament.name}</h3>
             </div>
@@ -501,19 +676,21 @@ function TournamentCard({
             {tournament.organizer ? <p className="break-words">{tournament.organizer}</p> : null}
             {tournament.lastUpdate ? <p>Lapā: {tournament.lastUpdate}</p> : null}
           </div>
+          <Neighbors tournament={tournament} />
           {tournament.partial ? (
             <p className="text-sm text-brass">Partiju sarakstu šoreiz neizdevās nolasīt.</p>
           ) : (
             <>
               <RoundNote tournament={tournament} />
-              <GameTable games={games} />
+              <RoundLine games={games} />
+              <GameTable games={games} notes={notes} />
             </>
           )}
           <a
             href={tournament.playerUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-flex h-11 items-center gap-2 text-sm font-medium text-pine"
+            className="mt-4 inline-flex h-12 items-center gap-2 text-sm font-medium text-pine"
           >
             Atvērt chess-results
             <ExternalLink className="size-4" aria-hidden />
@@ -524,28 +701,37 @@ function TournamentCard({
   );
 }
 
-function GameTable({ games }: { games: Game[] }) {
+function GameTable({
+  games,
+  notes,
+}: {
+  games: Game[];
+  notes: { notes: Record<string, string>; save: (id: string, text: string) => void };
+}) {
   if (games.length === 0) return <p className="text-sm text-muted">Partijas vēl nav publicētas.</p>;
   return (
     <ol className="grid gap-2">
-      {games.map((game) => (
-        <li
-          key={`${game.tournamentId}-${game.round}-${game.opponent}`}
-          className="grid grid-cols-[2.5rem_2.75rem_1fr_auto] items-center gap-3 rounded-xl bg-bg px-3 py-2"
-        >
-          <span className="text-sm text-muted tabular-nums">{game.round}.</span>
-          <PieceMark color={game.color} />
-          <span className="min-w-0">
-            <span className="block truncate font-medium">{game.opponent}</span>
-            <span className="block truncate text-sm text-muted">
-              {colorName(game.color).toLocaleLowerCase("lv")}
-              {game.board > 0 ? ` · ${game.board}. galds` : ""}
-              {game.opponentClub ? ` · ${game.opponentClub}` : ""}
-            </span>
-          </span>
-          <ResultMark result={game.result} />
-        </li>
-      ))}
+      {games.map((game) => {
+        const id = noteId(game);
+        return (
+          <li key={id} className="rounded-xl bg-bg px-3 py-3">
+            <div className="grid grid-cols-[2.5rem_2.75rem_1fr_auto] items-center gap-3">
+              <span className="text-sm text-muted tabular-nums">{game.round}.</span>
+              <PieceMark color={game.color} />
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{game.opponent}</span>
+                <span className="block truncate text-sm text-muted">
+                  {colorName(game.color).toLocaleLowerCase("lv")}
+                  {game.board > 0 ? ` · ${game.board}. galds` : ""}
+                  {game.opponentClub ? ` · ${game.opponentClub}` : ""}
+                </span>
+              </span>
+              <ResultMark result={game.result} />
+            </div>
+            <GameNote id={id} value={notes.notes[id] ?? ""} onSave={notes.save} />
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -566,15 +752,18 @@ function OpponentRow({
       aria-pressed={pressed}
       onClick={onSelect}
       className={
-        "flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left motion-reduce:transition-none " +
-        (pressed ? "border-pine bg-pine-soft" : "border-line bg-surface")
+        "flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left motion-reduce:transition-none " +
+        (pressed ? "border-pine bg-pine-soft" : opponent.games > 1 ? "border-pine bg-surface" : "border-line bg-surface")
       }
     >
-      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-bg-deep font-display text-lg tabular-nums">
-        {opponent.games}
+      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-bg-deep text-sm font-medium">
+        {initials(opponent.name)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{opponent.name}</span>
+        <span className="block truncate font-medium">
+          {opponent.name}
+          {opponent.games > 1 ? <span className="text-muted"> · {opponent.games}×</span> : null}
+        </span>
         <span className="block truncate text-sm text-muted">{opponent.club || opponent.fed}</span>
       </span>
       <span className="text-right">
@@ -686,7 +875,7 @@ function NextGameBanner({ tournament }: { tournament: Tournament }) {
     <section className="overflow-hidden rounded-3xl bg-pine text-white">
       <div className="grid sm:grid-cols-[8.5rem_1fr]">
         <div className="grid place-items-center bg-white px-4 py-5">
-          <Knight tone={next.color === "black" ? "black" : "white"} className="size-28" />
+          <MiniBoard color={next.color} />
         </div>
         <div className="px-5 py-5 sm:px-6">
           <div className="flex items-baseline justify-between gap-3">
@@ -705,10 +894,10 @@ function NextGameBanner({ tournament }: { tournament: Tournament }) {
           </div>
           <p className="mt-4 text-lg">pret {next.opponent}</p>
           <p className="mt-1 text-sm text-pine-soft">
-            {next.opponentPoints != null ? `${formatPoints(next.opponentPoints)} punkti pirms partijas` : null}
-            {next.opponentPoints != null && tournament.location ? " · " : ""}
-            {tournament.location || tournament.name}
+            {placeLine(tournament)}
+            {next.publishedAt ? ` · izloze publicēta ${next.publishedAt}` : tournament.lastRoundAt ? ` · iepriekšējā kārta publicēta ${tournament.lastRoundAt}` : ""}
           </p>
+          <Neighbors tournament={tournament} light />
           <a
             href={next.url}
             target="_blank"
@@ -742,8 +931,10 @@ function LiveStatus({ tournament }: { tournament: Tournament }) {
         <p className="mt-2 text-sm text-muted">
           Pēdējā: {last.round}. kārta
           {last.board > 0 ? `, ${last.board}. galds` : ""}, {colorName(last.color).toLocaleLowerCase("lv")}, pret {last.opponent}.
+          {tournament.lastRoundAt ? ` Publicēta ${tournament.lastRoundAt}.` : ""}
         </p>
       ) : null}
+      <Neighbors tournament={tournament} />
     </section>
   );
 }
@@ -754,6 +945,7 @@ function RoundNote({ tournament }: { tournament: Tournament }) {
     return (
       <p className="mb-3 text-sm">
         Nākamā: {next.round}. kārta, {next.board > 0 ? `${next.board}. galds` : "galds vēl nav zināms"}, {colorName(next.color).toLocaleLowerCase("lv")} pret {next.opponent}.
+        {next.publishedAt ? ` Izloze publicēta ${next.publishedAt}.` : tournament.lastRoundAt ? ` Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.` : ""}
       </p>
     );
   }
@@ -781,6 +973,7 @@ function Charts({ dossier }: { dossier: Dossier }) {
         <BalanceBar dossier={dossier} />
         <ColorSplit title="Krāsas" hint="visas partijas" games={games} />
         <ColorSplit title="Krāsas uzvarās" hint="tikai uzvarētās partijas" games={games.filter((game) => game.result === "win")} />
+        {today && today.games.length > 0 ? <TodayColors games={today.games} /> : null}
       </div>
     </section>
   );
@@ -889,6 +1082,340 @@ function ColorSplit({ title, hint, games }: { title: string; hint: string; games
               </span>
             </li>
           ))}
+      </ul>
+    </div>
+  );
+}
+
+function FilterChip({
+  pressed,
+  onClick,
+  children,
+}: {
+  pressed: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={
+        "h-12 rounded-full px-4 text-sm font-medium " +
+        (pressed ? "bg-pine text-white" : "border border-line bg-surface")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function initials(name: string): string {
+  const [surname, given] = name.split(",").map((part) => part.trim());
+  const first = surname?.[0] ?? "";
+  const second = given?.split(/\s+/)[0]?.[0] ?? "";
+  return `${first}${second}`.toLocaleUpperCase("lv") || "?";
+}
+
+function scoreBorder(tournament: Tournament): string {
+  const played = tournament.games.filter((game) => game.score != null).length;
+  if (!played || tournament.points == null) return "border-line";
+  const rate = tournament.points / played;
+  if (rate > 0.5) return "border-pine";
+  if (rate < 0.5) return "border-loss";
+  return "border-line";
+}
+
+function placeLine(tournament: Tournament): string {
+  const bits: string[] = [];
+  if (tournament.rank) bits.push(`${tournament.rank}. vieta${tournament.fieldSize ? ` no ${tournament.fieldSize}` : ""}`);
+  if (tournament.points != null) bits.push(`${formatPoints(tournament.points)} punkti`);
+  if (!bits.length && tournament.location) bits.push(tournament.location);
+  return bits.join(" · ");
+}
+
+function MiniBoard({ color, className = "size-16" }: { color: PieceColor; className?: string }) {
+  if (color === "unknown") return <span className={className} />;
+  const white = color === "white";
+  const squares = [false, true, true, false];
+  return (
+    <span className={`grid grid-cols-2 overflow-hidden rounded-md border border-line ${className}`}>
+      {squares.map((light, index) => {
+        const show = (white && !light && index === 0) || (!white && light && index === 1);
+        return (
+          <span key={index} className={`grid place-items-center ${light ? "bg-white" : "bg-[#1e4a38]"}`}>
+            {show ? <Knight tone={white ? "white" : "black"} className="size-3/5" /> : null}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function Neighbors({ tournament, light = false }: { tournament: Tournament; light?: boolean }) {
+  const rows = tournament.standings;
+  if (!rows || (!rows.above && !rows.below)) return null;
+  return (
+    <p className={`text-sm ${light ? "mt-2 text-pine-soft" : "mb-3 text-muted"}`}>
+      {rows.above ? `Virs: ${rows.above.rank}. ${rows.above.name} (${formatPoints(rows.above.points)})` : "Neviens nav virs"}
+      {" · "}
+      {rows.below ? `Zem: ${rows.below.rank}. ${rows.below.name} (${formatPoints(rows.below.points)})` : "Neviens nav zem"}
+    </p>
+  );
+}
+
+function RoundLine({ games }: { games: Game[] }) {
+  const rows = [...games].sort((a, b) => a.round - b.round);
+  if (rows.length === 0) return null;
+  let sum = 0;
+  return (
+    <ol className="mb-4 flex gap-2 overflow-x-auto pb-1">
+      {rows.map((game) => {
+        if (game.score != null) sum += game.score;
+        const cls = game.score == null ? "bg-line" : game.score >= 1 ? "bg-pine" : game.score > 0 ? "bg-pine-soft" : "bg-loss";
+        const total = game.score == null ? null : sum;
+        return (
+          <li key={`${game.round}-${game.opponent}`} className="grid min-w-9 justify-items-center gap-1 text-xs text-muted tabular-nums">
+            <span className={`h-2 w-full rounded-sm ${cls}`} />
+            <span>{game.round}</span>
+            <span className="text-ink">{formatPoints(total)}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function GameNote({ id, value, onSave }: { id: string; value: string; onSave: (id: string, text: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  if (!editing) {
+    return (
+      <div className="mt-2">
+        {value ? <p className="text-sm">{value}</p> : null}
+        <button type="button" onClick={() => setEditing(true)} className="h-11 text-sm font-medium text-pine">
+          {value ? "Labot piezīmi" : "Piezīme"}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <textarea
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        onSave(id, draft);
+        setEditing(false);
+      }}
+      rows={2}
+      autoFocus
+      placeholder="Piezīme paliek tikai šajā telefonā"
+      className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none"
+    />
+  );
+}
+
+function summaryText(dossier: Dossier): string {
+  const tournament = dossier.tournaments.find((item) => item.endDate === dossier.today) ?? dossier.tournaments[0];
+  if (!tournament) return "Nav turnīru.";
+  const played = tournament.games.filter((game) => game.score != null).length;
+  const when = tournament.endDate === dossier.today ? " šodien" : ` ${formatDate(tournament.endDate)}`;
+  const lines = [
+    `${DISPLAY_NAME}${when}: ${formatPoints(tournament.points)} punkti${played ? ` no ${played} partijām` : ""}.`,
+  ];
+  if (tournament.rank) lines.push(`${tournament.rank}. vieta${tournament.fieldSize ? ` no ${tournament.fieldSize}` : ""}.`);
+  const next = tournament.nextGame;
+  if (next) {
+    lines.push(
+      `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}.`,
+    );
+    if (next.publishedAt) lines.push(`Izloze publicēta ${next.publishedAt}.`);
+  } else if (tournament.lastRoundAt) {
+    lines.push(`Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.`);
+  }
+  if (tournament.standings?.above) {
+    lines.push(`Virs: ${tournament.standings.above.name}, ${formatPoints(tournament.standings.above.points)}.`);
+  }
+  if (tournament.standings?.below) {
+    lines.push(`Zem: ${tournament.standings.below.name}, ${formatPoints(tournament.standings.below.points)}.`);
+  }
+  return lines.join(" ");
+}
+
+function CopySummary({ dossier, compact = false }: { dossier: Dossier; compact?: boolean }) {
+  const [done, setDone] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(summaryText(dossier));
+    } catch {
+      return;
+    }
+    setDone(true);
+    window.setTimeout(() => setDone(false), 1600);
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className={
+        compact
+          ? "inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-white/15 px-3 text-sm font-medium"
+          : "mt-4 inline-flex h-12 items-center gap-2 rounded-full border border-line px-4 font-medium"
+      }
+    >
+      <Copy className="size-4" aria-hidden />
+      {done ? "Nokopēts" : "Kopēt"}
+    </button>
+  );
+}
+
+function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
+  const next = tournament.nextGame;
+  if (!next) return null;
+  return (
+    <div className="border-t border-white/20 bg-pine text-white">
+      <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2 sm:px-6">
+        <MiniBoard color={next.color} className="size-12 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">
+            {next.round}. kārta · {next.board > 0 ? `${next.board}. galds` : "galds nav zināms"} · {colorName(next.color).toLocaleLowerCase("lv")}
+          </p>
+          <p className="truncate">pret {next.opponent}</p>
+          <p className="truncate text-sm text-pine-soft">
+            {placeLine(tournament)}
+            {next.publishedAt ? ` · izloze ${next.publishedAt}` : tournament.lastRoundAt ? ` · iepriekšējā ${tournament.lastRoundAt}` : ""}
+          </p>
+        </div>
+        <CopySummary dossier={dossier} compact />
+      </div>
+    </div>
+  );
+}
+
+function InstallHint() {
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (localStorage.getItem("valters-install") === "1" || standalone) setOpen(false);
+  }, []);
+  if (!open) return null;
+  return (
+    <section className="mb-4 rounded-2xl border border-line bg-surface px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-xl">Uz sākuma ekrāna</h2>
+        <button
+          type="button"
+          className="h-12 shrink-0 rounded-full px-3 text-sm font-medium text-pine"
+          onClick={() => {
+            localStorage.setItem("valters-install", "1");
+            setOpen(false);
+          }}
+        >
+          Aizvērt
+        </button>
+      </div>
+      <p className="mt-2 max-w-2xl text-sm text-muted">
+        iPhone: Safari dalīšanās poga, tad «Pievienot sākuma ekrānam». Android: pārlūka izvēlne, tad «Pievienot sākuma ekrānam». Lapa atveras vienā pieskārienā. Signāls par jaunu galdiņu skan, kamēr lapa ir atvērta.
+      </p>
+    </section>
+  );
+}
+
+function streakStats(games: Game[]) {
+  let run = 0;
+  let best = 0;
+  for (const game of games) {
+    if (game.result === "win") {
+      run += 1;
+      best = Math.max(best, run);
+    } else if (game.score != null) {
+      run = 0;
+    }
+  }
+  let current = 0;
+  for (let index = games.length - 1; index >= 0; index -= 1) {
+    if (games[index]?.result !== "win") break;
+    current += 1;
+  }
+  return { current, best, last: games.slice(-10) };
+}
+
+function Records({ dossier }: { dossier: Dossier }) {
+  const games = timeline(dossier);
+  const { current, best, last } = streakStats(games);
+  const bestPoints = dossier.tournaments.reduce<Tournament | null>((chosen, tournament) => {
+    if (tournament.points == null) return chosen;
+    if (!chosen || (chosen.points ?? 0) < tournament.points) return tournament;
+    return chosen;
+  }, null);
+  const bestPerformance = dossier.tournaments.reduce<Tournament | null>((chosen, tournament) => {
+    if (tournament.performance == null) return chosen;
+    if (!chosen || (chosen.performance ?? 0) < tournament.performance) return tournament;
+    return chosen;
+  }, null);
+  const cards = [
+    { label: "Pašreizējā sērija", value: String(current) },
+    { label: "Garākā sērija", value: String(best) },
+    { label: "Labākā vieta", value: dossier.totals.bestRank ? String(dossier.totals.bestRank) : "—" },
+    { label: "Vairāk punktu", value: bestPoints ? formatPoints(bestPoints.points) : "—" },
+    { label: "Labākais performance", value: bestPerformance?.performance ? String(bestPerformance.performance) : "—" },
+  ];
+  return (
+    <section className="mt-8">
+      <SectionTitle title="Rekordi" hint="sērijas un labākie turnīri" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {cards.map((card) => (
+          <div key={card.label} className="rounded-2xl border border-line bg-surface px-4 py-4">
+            <p className="text-sm text-muted">{card.label}</p>
+            <p className="mt-1 font-display text-3xl text-pine tabular-nums">{card.value}</p>
+          </div>
+        ))}
+      </div>
+      {last.length > 0 ? (
+        <div className="mt-3 rounded-2xl border border-line bg-surface px-4 py-4">
+          <p className="text-sm text-muted">Pēdējās {last.length} partijas</p>
+          <ol className="mt-3 flex gap-2 overflow-x-auto">
+            {last.map((game) => (
+              <li key={`${game.tournamentId}-${game.round}-${game.opponent}`}>
+                <ResultMark result={game.result} />
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TodayColors({ games }: { games: Game[] }) {
+  const rows = (["white", "black"] as const).map((color) => {
+    const mine = games.filter((game) => game.color === color);
+    const scored = mine.filter((game) => game.score != null);
+    return {
+      color,
+      count: mine.length,
+      score: scored.reduce((sum, game) => sum + (game.score ?? 0), 0),
+    };
+  });
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4">
+      <h3 className="text-xl">Šodienas krāsas</h3>
+      <ul className="mt-3 grid gap-3 text-sm">
+        {rows.map((row) => (
+          <li key={row.color} className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2">
+              <MiniBoard color={row.color} className="size-10" />
+              {colorName(row.color)}
+            </span>
+            <span className="tabular-nums">
+              {row.count} partijas · {formatPoints(row.score)} punkti
+            </span>
+          </li>
+        ))}
       </ul>
     </div>
   );

@@ -6,6 +6,7 @@ import type {
   Opponent,
   PieceColor,
   NextGame,
+  Standings,
   Tournament,
 } from "./types";
 
@@ -367,6 +368,7 @@ export function parseRoundPairing(
       opponentPoints: parsePoints(cellText(isWhite ? (cells[10] ?? "") : (cells[8] ?? ""))),
       url: pageUrl,
       pending: pairingIsPending(cellText(cells[9] ?? "")),
+      publishedAt: "",
     };
   }
   return null;
@@ -388,6 +390,7 @@ export function pendingGameFromCard(card: CardParse | null, playerHref: string):
     opponentFed: game.opponentFed,
     opponentPoints: game.opponentPoints,
     url: absoluteChessUrl(playerHref),
+    publishedAt: "",
   };
 }
 
@@ -409,11 +412,81 @@ function opponentKey(name: string, club: string): string {
   return `${name.toLocaleLowerCase("lv")}::${club.toLocaleLowerCase("lv")}`;
 }
 
+export function parseRoundClock(html: string): string {
+  const flat = cleanText(html.replace(/<script[\s\S]*?<\/script>/gi, " "));
+  return flat.match(/Round\s+\d+\s+on\s+[\d/]+\s+at\s+(\d{1,2}:\d{2})/i)?.[1] ?? "";
+}
+
+function foldName(value: string): string {
+  const map: Record<string, string> = {
+    ā: "a", č: "c", ē: "e", ģ: "g", ī: "i", ķ: "k", ļ: "l", ņ: "n", š: "s", ū: "u", ž: "z", ŗ: "r",
+  };
+  return value.toLocaleLowerCase("lv").replace(/[āčēģīķļņšūžŗ]/g, (letter) => map[letter] ?? letter);
+}
+
+function rankingRows(html: string): string[] {
+  const rows: string[] = [];
+  const re = /<tr class="CRng[12](?:\s[^"]*)?"\s*>/gi;
+  for (const match of html.matchAll(re)) {
+    const start = match.index ?? 0;
+    let cursor = start + match[0].length;
+    let depth = 1;
+    while (cursor < html.length && depth > 0) {
+      const nextOpen = html.indexOf("<tr", cursor);
+      const nextClose = html.indexOf("</tr>", cursor);
+      if (nextClose < 0) break;
+      if (nextOpen >= 0 && nextOpen < nextClose) {
+        depth += 1;
+        cursor = nextOpen + 3;
+      } else {
+        depth -= 1;
+        cursor = nextClose + 5;
+        if (depth === 0) rows.push(html.slice(start, cursor));
+      }
+    }
+  }
+  return rows;
+}
+
+export function parseStandings(html: string, playerName: string): Standings | null {
+  const people = rankingRows(html)
+    .map((row) => {
+      const cells = splitCells(row);
+      if (cells.length < 8) return null;
+      const rank = parsePoints(cellText(cells[0] ?? ""));
+      const named = cells.map(cellText).find((text) => text.includes(",")) ?? "";
+      const name = named || cellText(cells[4] ?? "");
+      if (!rank || rank < 1 || !name.includes(",")) return null;
+      return {
+        rank,
+        name,
+        club: cellText(cells[8] ?? ""),
+        points: parsePoints(cellText(cells[9] ?? "")),
+      };
+    })
+    .filter((row): row is NonNullable<Standings["above"]> => row != null);
+  const tokens = foldName(playerName).split(/[^a-z]+/).filter(Boolean);
+  const surname = tokens[0] ?? "";
+  const given = tokens[1] ?? "";
+  if (!surname) return null;
+  const hits = people
+    .map((person, index) => ({ person, index }))
+    .filter(({ person }) => foldName(person.name).includes(surname));
+  const chosen = hits.find(({ person }) => !given || foldName(person.name).includes(given)) ?? hits[0];
+  if (!chosen) return null;
+  return {
+    above: people[chosen.index - 1] ?? null,
+    below: people[chosen.index + 1] ?? null,
+  };
+}
+
 export function buildDossier(input: {
   hits: SearchHit[];
   cards: Array<CardParse | null>;
   metas: Array<TournamentMeta | null>;
   nextGames: Array<NextGame | null>;
+  standings: Array<Standings | null>;
+  lastRoundAt: string[];
   fetchedAt: string;
   today: string;
   fideId: string;
@@ -460,6 +533,8 @@ export function buildDossier(input: {
       partial: card == null,
       awaitingPairing: Boolean(live && !nextGame && scheduled != null && scoredRounds < scheduled),
       nextGame,
+      standings: input.standings[index] ?? null,
+      lastRoundAt: input.lastRoundAt[index] ?? "",
       games,
     };
   });

@@ -74,10 +74,43 @@ export async function showPairingNotification(body: string) {
   } catch {
     /* vibrate is optional */
   }
+  playChime();
 }
 
 function timeout(ms: number): Promise<null> {
   return new Promise((resolve) => {
     setTimeout(() => resolve(null), ms);
   });
+}
+
+let audio: AudioContext | null = null;
+
+export function unlockSound() {
+  if (typeof window === "undefined") return;
+  const Context = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Context) return;
+  audio = audio ?? new Context();
+  void audio.resume();
+}
+
+export function playChime() {
+  if (!audio || audio.state !== "running") return;
+  const now = audio.currentTime;
+  for (const [offset, frequency] of [
+    [0, 523],
+    [0.16, 659],
+    [0.32, 784],
+  ] as const) {
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = "sine";
+    osc.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, now + offset);
+    gain.gain.exponentialRampToValueAtTime(0.07, now + offset + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+    osc.connect(gain);
+    gain.connect(audio.destination);
+    osc.start(now + offset);
+    osc.stop(now + offset + 0.2);
+  }
 }
