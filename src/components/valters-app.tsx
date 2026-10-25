@@ -317,49 +317,48 @@ function TopBar({
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
       <div className="mx-auto max-w-6xl px-4 pt-2 pb-3 sm:px-6">
-        <div className="flex items-start gap-3">
+        <div className="grid h-11 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto] items-stretch gap-x-3 sm:h-14">
           <button
             type="button"
             onClick={() => window.location.reload()}
             aria-label="Pārlādēt un atvērt aktuālo turnīru"
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-pine"
+            className="row-span-2 inline-flex size-11 shrink-0 items-center justify-center self-center rounded-lg bg-pine sm:size-14"
           >
-            <Knight tone="white" className="size-10 p-0.5" />
+            <Knight tone="white" className="size-10 p-0.5 sm:size-12" />
           </button>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-end justify-between gap-2">
-              <h1 className="min-w-0 text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={loading}
-                  aria-busy={loading}
-                  aria-label={loading ? "Atjauno" : "Atjaunot"}
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-pine px-3 font-medium text-surface disabled:opacity-60 sm:px-4"
-                >
-                  <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
-                  <span className="hidden sm:inline">{loading ? "Atjauno…" : "Atjaunot"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  aria-pressed={dark}
-                  aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
-                  className="inline-flex size-11 items-center justify-center rounded-full border border-line bg-surface"
-                >
-                  {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
-                </button>
-              </div>
-            </div>
-            <p className="mt-0.5 whitespace-nowrap text-[13px] leading-none text-muted sm:text-sm">
-              FIDE {dossier.player.fideId}
-              {dossier.player.club ? ` · ${dossier.player.club}` : ""}
-            </p>
-            <p className="mt-0.5 text-right text-[11px] leading-none text-muted" title={stamped ? `Atjaunots ${stamped}` : undefined}>
-              {loading ? "Notiek" : `Atjaunots ${fresh}`}
-            </p>
+          <h1 className="min-w-0 self-start truncate text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
+          <div className="flex shrink-0 items-start gap-2 self-start">
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              aria-busy={loading}
+              aria-label={loading ? "Atjauno" : "Atjaunot"}
+              className="inline-flex h-7 items-center gap-2 rounded-full bg-pine px-2.5 text-sm font-medium text-surface disabled:opacity-60 sm:h-8 sm:px-4"
+            >
+              <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
+              <span className="hidden sm:inline">{loading ? "Atjauno…" : "Atjaunot"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-pressed={dark}
+              aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
+              className="inline-flex size-7 items-center justify-center rounded-full border border-line bg-surface sm:size-8"
+            >
+              {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+            </button>
           </div>
+          <p className="min-w-0 self-end truncate text-[13px] leading-none text-muted sm:text-sm">
+            FIDE {dossier.player.fideId}
+            {dossier.player.club ? ` · ${dossier.player.club}` : ""}
+          </p>
+          <p
+            className="self-end whitespace-nowrap text-right text-[11px] leading-none text-muted sm:text-xs"
+            title={stamped ? `Atjaunots ${stamped}` : undefined}
+          >
+            {loading ? "Notiek" : `Atjaunots ${fresh}`}
+          </p>
         </div>
       </div>
       {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
