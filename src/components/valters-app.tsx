@@ -327,39 +327,37 @@ function TopBar({
             <Knight tone="white" className="size-10 p-0.5" />
           </button>
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <h1 className="min-w-0 pt-0.5 text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
-              <div className="flex shrink-0 flex-col items-end gap-0.5">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onRefresh}
-                    disabled={loading}
-                    aria-busy={loading}
-                    aria-label={loading ? "Atjauno" : "Atjaunot"}
-                    className="inline-flex h-11 items-center gap-2 rounded-full bg-pine px-3 font-medium text-surface disabled:opacity-60 sm:px-4"
-                  >
-                    <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
-                    <span className="hidden sm:inline">{loading ? "Atjauno…" : "Atjaunot"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleTheme}
-                    aria-pressed={dark}
-                    aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
-                    className="inline-flex size-11 items-center justify-center rounded-full border border-line bg-surface"
-                  >
-                    {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
-                  </button>
-                </div>
-                <p className="text-[11px] leading-none text-muted" title={stamped ? `Atjaunots ${stamped}` : undefined}>
-                  {loading ? "Notiek" : `Dati ${fresh}`}
-                </p>
+            <div className="flex items-end justify-between gap-2">
+              <h1 className="min-w-0 text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={loading}
+                  aria-busy={loading}
+                  aria-label={loading ? "Atjauno" : "Atjaunot"}
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-pine px-3 font-medium text-surface disabled:opacity-60 sm:px-4"
+                >
+                  <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
+                  <span className="hidden sm:inline">{loading ? "Atjauno…" : "Atjaunot"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  aria-pressed={dark}
+                  aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
+                  className="inline-flex size-11 items-center justify-center rounded-full border border-line bg-surface"
+                >
+                  {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+                </button>
               </div>
             </div>
             <p className="mt-0.5 whitespace-nowrap text-[13px] leading-none text-muted sm:text-sm">
               FIDE {dossier.player.fideId}
               {dossier.player.club ? ` · ${dossier.player.club}` : ""}
+            </p>
+            <p className="mt-0.5 text-right text-[11px] leading-none text-muted" title={stamped ? `Atjaunots ${stamped}` : undefined}>
+              {loading ? "Notiek" : `Dati ${fresh}`}
             </p>
           </div>
         </div>
