@@ -75,25 +75,30 @@ html[data-theme="dark"] .bg-white\/95 {
   background-color: color-mix(in srgb, var(--color-surface) 95%, transparent);
 }
 
+.bg-piece {
+  background-color: #f7f4ee;
+}
+
+.bg-chart {
+  background-color: #1e4a38;
+}
+
+.bg-chart-soft {
+  background-color: #b7d8c8;
+}
+
+html[data-theme="dark"] .bg-chart {
+  background-color: #8fceb0;
+}
+
+html[data-theme="dark"] .bg-chart-soft {
+  background-color: #4d7d66;
+}
+
 .page-veil {
-  background: rgb(250 252 250 / 0.78);
+  background: rgb(255 255 255 / 0.1);
 }
 
 html[data-theme="dark"] .page-veil {
   background: rgb(8 14 11 / 0.72);
 }
-
-
-/* A filled pine surface keeps a light foreground in both themes. */
-.bg-pine .text-pine-soft { color: #d7efe4; }
-html[data-theme="dark"] :focus-visible { outline-color: #9dd9b9; }
-@layer base {
-  button, a, summary, input { -webkit-tap-highlight-color: transparent; }
-  body { margin: 0; }
-  footer { padding-bottom: max(2.5rem, env(safe-area-inset-bottom)); }
-  summary::-webkit-details-marker { display: none; }
-}
-html[data-theme="dark"] .piece-light { background-color: #ffffff; }
-
-.search-field:focus-within { outline: 2px solid #1e4a38; outline-offset: 2px; }
-html[data-theme="dark"] .search-field:focus-within { outline-color: #9dd9b9; }

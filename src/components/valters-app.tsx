@@ -105,7 +105,7 @@ function sportClass(tournament: Tournament): string | null {
 }
 
 function statusClass(label: string | null): string {
-  if (label === "Notiek") return "bg-pine text-surface";
+  if (label === "Notiek") return "bg-pine text-white";
   return "bg-bg-deep text-muted";
 }
 
@@ -260,7 +260,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
             type="button"
             onClick={refresh}
             disabled={loading}
-            className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-pine px-5 font-medium text-surface disabled:opacity-60"
+            className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-pine px-5 font-medium text-white disabled:opacity-60"
           >
             <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
             Mēģināt vēlreiz
@@ -366,7 +366,7 @@ function TopBar({
               disabled={loading}
               aria-busy={loading}
               aria-label={loading ? "Atjauno" : "Atjaunot"}
-              className="inline-flex h-7 items-center gap-2 rounded-full bg-pine px-2.5 text-sm font-medium text-surface disabled:opacity-60 sm:h-8 sm:px-4"
+              className="inline-flex h-7 items-center gap-2 rounded-full bg-pine px-2.5 text-sm font-medium text-white disabled:opacity-60 sm:h-8 sm:px-4"
             >
               <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
               <span className="hidden sm:inline">{loading ? "Atjauno…" : "Atjaunot"}</span>
@@ -1051,7 +1051,7 @@ function PieceMark({ color }: { color: PieceColor }) {
     <span
       className={
         "grid size-11 shrink-0 place-items-center rounded-md " +
-        (white ? "bg-pine" : "border border-line bg-white")
+        (white ? "bg-pine" : "border border-line bg-piece")
       }
     >
       <Knight tone={white ? "white" : "black"} className="size-10" />
@@ -1390,7 +1390,7 @@ function TournamentPoints({ dossier }: { dossier: Dossier }) {
           date: tournament.endDate,
           label: formatPoints(tournament.points),
           amount: tournament.points ?? 0,
-          bar: <div className="h-full w-full rounded-sm bg-pine" />,
+          bar: <div className="h-full w-full rounded-sm bg-chart" />,
         }))}
       />
     </div>
@@ -1425,7 +1425,7 @@ function TournamentShare({ dossier }: { dossier: Dossier }) {
           date: row.date,
           label: `${Math.round(row.share * 100)}%`,
           amount: row.share * 100,
-          bar: <div className="h-full w-full rounded-sm bg-pine" />,
+          bar: <div className="h-full w-full rounded-sm bg-chart" />,
         }))}
       />
     </div>
@@ -1466,8 +1466,8 @@ function TournamentResults({ dossier }: { dossier: Dossier }) {
             amount: total,
             bar: (
               <div className="flex h-full w-full flex-col-reverse overflow-hidden rounded-sm">
-                {row.wins > 0 ? <div className="bg-pine" style={{ flex: row.wins }} /> : null}
-                {row.draws > 0 ? <div className="bg-pine-soft" style={{ flex: row.draws }} /> : null}
+                {row.wins > 0 ? <div className="bg-chart" style={{ flex: row.wins }} /> : null}
+                {row.draws > 0 ? <div className="bg-chart-soft" style={{ flex: row.draws }} /> : null}
                 {row.losses > 0 ? <div className="bg-loss" style={{ flex: row.losses }} /> : null}
               </div>
             ),
@@ -1491,7 +1491,7 @@ function RoundBars({ tournament }: { tournament: Tournament }) {
           const game = byRound.get(round);
           const score = game?.score;
           const height = score == null ? 8 : Math.max(8, score * 100);
-          const cls = score == null ? "bg-line" : score >= 1 ? "bg-pine" : score > 0 ? "bg-pine-soft" : "bg-loss";
+          const cls = score == null ? "bg-line" : score >= 1 ? "bg-chart" : score > 0 ? "bg-chart-soft" : "bg-loss";
           return (
             <div key={round} className="flex min-w-0 flex-1 flex-col items-center gap-1">
               <div className="flex h-16 w-full items-end">
@@ -1511,8 +1511,8 @@ function BalanceBar({ dossier }: { dossier: Dossier }) {
   const { wins, draws, losses, scored } = dossier.totals;
   const total = Math.max(scored, 1);
   const parts = [
-    { label: "Uzvaras", value: wins, cls: "bg-pine" },
-    { label: "Neizšķirti", value: draws, cls: "bg-pine-soft" },
+    { label: "Uzvaras", value: wins, cls: "bg-chart" },
+    { label: "Neizšķirti", value: draws, cls: "bg-chart-soft" },
     { label: "Zaudējumi", value: losses, cls: "bg-loss" },
   ];
   return (
@@ -1562,7 +1562,7 @@ function ColorRecord({ games }: { games: Game[] }) {
               </span>
             </div>
             <div className="h-3 overflow-hidden rounded-full bg-bg-deep">
-              <div className="h-full bg-pine" style={{ width: `${(row.wins / row.played) * 100}%` }} />
+              <div className="h-full bg-chart" style={{ width: `${(row.wins / row.played) * 100}%` }} />
             </div>
           </li>
         ))}
@@ -1579,8 +1579,8 @@ function ColorSplit({ title, hint, games }: { title: string; hint: string; games
     unknown: games.filter((game) => game.color === "unknown").length,
   };
   const parts = [
-    { key: "white" as const, label: "Baltie", value: counts.white, cls: "bg-white shadow-[inset_0_0_0_1px_#1e4a38]" },
-    { key: "black" as const, label: "Melnie", value: counts.black, cls: "bg-pine" },
+    { key: "white" as const, label: "Baltie", value: counts.white, cls: "bg-piece shadow-[inset_0_0_0_1px_#1e4a38]" },
+    { key: "black" as const, label: "Melnie", value: counts.black, cls: "bg-chart" },
     { key: "unknown" as const, label: "Krāsa nav norādīta", value: counts.unknown, cls: "bg-line" },
   ];
   return (
@@ -1668,7 +1668,7 @@ function MiniBoard({ color, className = "size-16" }: { color: PieceColor; classN
       {squares.map((light, index) => {
         const show = (white && !light && index === 0) || (!white && light && index === 1);
         return (
-          <span key={index} className={`grid place-items-center ${light ? "bg-white" : "bg-[#1e4a38]"}`}>
+          <span key={index} className={`grid place-items-center ${light ? "bg-piece" : "bg-[#1e4a38]"}`}>
             {show ? <Knight tone={white ? "white" : "black"} className="size-3/5" /> : null}
           </span>
         );
