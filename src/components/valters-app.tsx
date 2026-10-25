@@ -30,6 +30,7 @@ import {
   formatDate,
   formatPoints,
   formatStamp,
+  isoDate,
 } from "@/lib/chess/parse";
 import type { Dossier, Game, GameResult, LoadResult, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
 
@@ -56,24 +57,34 @@ function pointsLabel(value: number | null): string {
   return `${shown} ${half || one ? "punkts" : "punkti"}`;
 }
 
+function tidyTournamentName(name: string): string {
+  return name
+    .replace(/\(\s*\)/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.:;–-])/g, "$1")
+    .trim();
+}
+
 function displayTournamentName(name: string, endDate: string): string {
-  if (!endDate) return name;
-  const iso = endDate.slice(0, 10);
-  const parts = iso.split("-");
-  if (parts.length < 3) return name;
-  const [year, month, day] = parts;
-  const forms = [
-    formatDate(iso),
-    iso,
-    `${year}/${month}/${day}`,
-    `${day}.${month}.${year}`,
-    `${day}.${month}.${year.slice(2)}`,
-  ];
   let next = name;
-  for (const form of forms) {
-    if (form && next.includes(form)) next = next.replace(form, " ");
+  if (endDate) {
+    const iso = endDate.slice(0, 10);
+    const parts = iso.split("-");
+    if (parts.length >= 3) {
+      const [year, month, day] = parts;
+      const forms = [
+        formatDate(iso),
+        iso,
+        `${year}/${month}/${day}`,
+        `${day}.${month}.${year}`,
+        `${day}.${month}.${year.slice(2)}`,
+      ];
+      for (const form of forms) {
+        if (form && next.includes(form)) next = next.replace(form, " ");
+      }
+    }
   }
-  return next.replace(/\s{2,}/g, " ").replace(/\s+([,.:;–-])/g, "$1").trim();
+  return tidyTournamentName(next);
 }
 
 function sportClass(tournament: Tournament): string | null {
@@ -647,8 +658,13 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
     [orderedOpponents, repeatNames],
   );
   const shownOpponents = useMemo(() => {
-    if (opponentSort !== "name") return onceOpponents;
-    return [...sortedRepeats, ...onceOpponents].sort((a, b) => a.name.localeCompare(b.name, "lv"));
+    const rows = [...sortedRepeats, ...onceOpponents];
+    rows.sort((a, b) =>
+      opponentSort === "name"
+        ? a.name.localeCompare(b.name, "lv")
+        : b.games - a.games || a.name.localeCompare(b.name, "lv"),
+    );
+    return rows;
   }, [opponentSort, sortedRepeats, onceOpponents]);
 
   return (
@@ -740,23 +756,6 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
         </section>
       ) : (
         <>
-          {opponentSort === "games" && sortedRepeats.length > 0 ? (
-            <section>
-              <SectionTitle title="Atkārtoti pretinieki" hint="" />
-              <ul className="grid gap-1.5">
-                {sortedRepeats.map((opponent) => (
-                  <li key={opponent.key}>
-                    <OpponentRow
-                      opponent={opponent}
-                      pressed={opponent.key === selected}
-                      onSelect={() => setSelected((current) => (current === opponent.key ? null : opponent.key))}
-                    />
-                    {opponent.key === selected ? <Meetings opponent={opponent} /> : null}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
           {shownOpponents.length > 0 ? (
             <section>
               <SectionTitle title="Pretinieki" hint="" />
@@ -1003,6 +1002,12 @@ function OpponentRow({
 }
 
 function Meetings({ opponent }: { opponent: Opponent }) {
+  const games = [...opponent.meetings].sort((a, b) => {
+    const left = isoDate(a.tournamentDate) || a.tournamentDate;
+    const right = isoDate(b.tournamentDate) || b.tournamentDate;
+    if (left !== right) return left < right ? 1 : -1;
+    return b.round - a.round;
+  });
   return (
     <div className="mt-3 rounded-2xl border border-line bg-surface p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -1010,10 +1015,10 @@ function Meetings({ opponent }: { opponent: Opponent }) {
         <h3 className="text-xl">{opponent.name}</h3>
       </div>
       <ul className="grid gap-3">
-        {opponent.meetings.length === 0 ? (
+        {games.length === 0 ? (
           <li className="text-sm text-muted">Par šo pretinieku partiju detaļas nav saglabātas.</li>
         ) : (
-          opponent.meetings.map((game) => (
+          games.map((game) => (
           <li key={`${game.tournamentId}-${game.round}`} className="border-t border-line pt-3 first:border-t-0 first:pt-0">
             <div className="flex items-start justify-between gap-3">
               <PieceMark color={game.color} />
