@@ -76,6 +76,23 @@ function displayTournamentName(name: string, endDate: string): string {
   return next.replace(/\s{2,}/g, " ").replace(/\s+([,.:;–-])/g, "$1").trim();
 }
 
+function sportClass(tournament: Tournament): string | null {
+  const known: Record<string, string> = {
+    "1332728": "Iesācēji",
+    "1374865": "Iesācēji",
+    "1438074": "Iesācēji",
+    "1465390": "4. sporta klase",
+    "1487595": "4. sporta klase",
+    "1465850": "3. sporta klase",
+  };
+  if (known[tournament.id]) return known[tournament.id];
+  const name = tournament.name.toLowerCase();
+  if (name.includes("iesācēj")) return "Iesācēji";
+  if (/3\s*\.?\s*sp\.?\s*kl/.test(name)) return "3. sporta klase";
+  if (/4\s*\.?\s*sp\.?\s*kl/.test(name)) return "4. sporta klase";
+  return null;
+}
+
 function statusClass(label: string | null): string {
   if (label === "Notiek") return "bg-pine text-surface";
   return "bg-bg-deep text-muted";
@@ -800,6 +817,7 @@ function TournamentCard({
   featured?: boolean;
 }) {
   const label = eventLabel(tournament, today);
+  const sport = sportClass(tournament);
   const medal = tournament.rank != null && tournament.rank >= 1 && tournament.rank <= 3;
   const cap = maxPoints(tournament);
   const [opened, setOpened] = useState(startOpen);
@@ -817,6 +835,9 @@ function TournamentCard({
             <div className="flex flex-wrap items-center gap-2">
               {label ? (
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(label)}`}>{label}</span>
+              ) : null}
+              {sport ? (
+                <span className="rounded-full bg-bg-deep px-2 py-0.5 text-xs font-medium text-muted">{sport}</span>
               ) : null}
               {medal ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-pine-soft px-2 py-0.5 text-xs font-medium text-pine">
