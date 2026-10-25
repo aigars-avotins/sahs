@@ -357,7 +357,7 @@ function TopBar({
               {dossier.player.club ? ` · ${dossier.player.club}` : ""}
             </p>
             <p className="mt-0.5 text-right text-[11px] leading-none text-muted" title={stamped ? `Atjaunots ${stamped}` : undefined}>
-              {loading ? "Notiek" : `Dati ${fresh}`}
+              {loading ? "Notiek" : `Atjaunots ${fresh}`}
             </p>
           </div>
         </div>
