@@ -273,8 +273,12 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
   return (
-    <div className="relative z-0 min-h-screen overflow-x-clip text-ink">
+    <div data-hydrated={hydrated ? "true" : "false"} className="relative z-0 min-h-screen overflow-x-clip text-ink">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
