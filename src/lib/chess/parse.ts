@@ -247,6 +247,7 @@ export function parseSearchResults(html: string): SearchHit[] {
 export type CardParse = {
   name: string;
   tournamentName: string;
+  fideId: string;
   points: number | null;
   rank: number | null;
   performance: number | null;
@@ -283,6 +284,7 @@ export function parsePlayerCard(html: string): CardParse {
       board: parsePoints(cellText(cells[1])) ?? 0,
       opponent,
       opponentFideId: cells[4].match(/(?:fideid|fide_id|id)=(\d{5,})/i)?.[1],
+      opponentSnr: cells[4].match(/[?&]snr=(\d+)/i)?.[1],
       opponentTitle: cellText(cells[3]),
       opponentRating: rating && rating > 0 ? rating : null,
       opponentFed: cellText(cells[6]),
@@ -301,9 +303,11 @@ export function parsePlayerCard(html: string): CardParse {
   if (!info.get("name") || !pageTitle(html)) {
     throw new Error("Spēlētāja lapa nav atpazīta; saglabāti iepriekšējie dati.");
   }
+  const fideId = (info.get("fide-id") || "").replace(/\D/g, "");
   return {
     name: info.get("name") ?? "",
     tournamentName: pageTitle(html),
+    fideId: fideId === "0" ? "" : fideId,
     points: parsePoints(info.get("points") ?? ""),
     rank: parsePoints(info.get("rank") ?? ""),
     performance: parsePoints(info.get("performance rating") ?? ""),
@@ -385,6 +389,8 @@ export function parseRoundPairing(
       color: isWhite ? "white" : "black",
       opponent,
       opponentTitle: cellText(isWhite ? (cells[11] ?? "") : (cells[3] ?? "")),
+      opponentFideId: opponentCell?.match(/(?:fideid|fide_id|id)=(\d{5,})/i)?.[1],
+      opponentSnr: opponentCell?.match(/[?&]snr=(\d+)/i)?.[1],
       opponentRating: rating && rating > 0 ? rating : null,
       opponentFed: cellText(isWhite ? (cells[14] ?? "") : (cells[6] ?? "")),
       opponentPoints: parsePoints(cellText(isWhite ? (cells[10] ?? "") : (cells[8] ?? ""))),
@@ -407,6 +413,8 @@ export function pendingGameFromCard(card: CardParse | null, playerHref: string):
     board: game.board,
     color: game.color,
     opponent: game.opponent,
+    opponentFideId: game.opponentFideId,
+    opponentSnr: game.opponentSnr,
     opponentTitle: game.opponentTitle,
     opponentRating: game.opponentRating,
     opponentFed: game.opponentFed,

@@ -32,7 +32,7 @@ import {
   formatStamp,
   isoDate,
 } from "@/lib/chess/parse";
-import type { Dossier, Game, GameResult, LoadResult, Opponent, PieceColor, Tournament } from "@/lib/chess/types";
+import type { Dossier, Game, GameResult, LoadResult, Opponent, OpponentGlance, PieceColor, Tournament } from "@/lib/chess/types";
 
 const DISPLAY_NAME = "Valters Avotiņš";
 
@@ -1162,6 +1162,34 @@ function latestMeeting(games: Game[]): Game | null {
   );
 }
 
+function tournamentCountLabel(count: number): string {
+  return count % 10 === 1 && count % 100 !== 11 ? `${count} turnīrs` : `${count} turnīri`;
+}
+
+function Glance({ glance }: { glance: OpponentGlance }) {
+  return (
+    <div className="mt-3 rounded-xl bg-white/10 px-3 py-3 text-sm">
+      <p>
+        FIDE {glance.fideId} · {tournamentCountLabel(glance.tournaments)}
+        {glance.bestRank ? ` · labākā vieta ${glance.bestRank}.` : ""}
+      </p>
+      {glance.recent.length > 0 ? (
+        <ul className="mt-2 grid gap-1 text-pine-soft">
+          {glance.recent.map((row) => (
+            <li key={`${row.endDate}-${row.name}`}>
+              {row.endDate ? `${formatDate(row.endDate)} · ` : ""}
+              {row.name}
+              {row.rank ? ` · ${row.rank}. vieta` : ""}
+              {row.fieldSize ? ` no ${row.fieldSize}` : ""}
+              {row.rounds ? ` · ${row.rounds} kārtas` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
   const next = tournament.nextGame;
   if (!next) return null;
@@ -1205,6 +1233,7 @@ function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament:
                   {last.tournamentName ? ` · ${last.tournamentName}` : ""}
                 </p>
               ) : null}
+              {next.glance ? <Glance glance={next.glance} /> : null}
             </>
           )}
           <p className="mt-1 text-sm text-pine-soft">

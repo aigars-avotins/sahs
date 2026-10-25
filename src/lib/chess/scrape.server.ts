@@ -4,7 +4,7 @@ import {
   pendingGameFromCard, rigaToday, type SearchHit,
 } from "./parse";
 import { ACTIVE_TTL, HISTORY_TTL, META_TTL, SEARCH_TTL, SourceError, type SourceContext } from "./coordinator.server";
-import type { LoadResult, NextGame } from "./types";
+import type { LoadResult, NextGame, OpponentGlance } from "./types";
 const FIDE_ID = "11662255";
 const UA = "ValtersAssistant/2.0 (personal chess dashboard; +https://kalns.eu)";
 const MAX_TOURNAMENTS = 100;
@@ -119,6 +119,63 @@ async function searchPlayer(source: SourceContext): Promise<SearchHit[]> {
   });
 }
 
+async function searchByFide(source: SourceContext, fideId: string): Promise<SearchHit[]> {
+  return source.memo(`glance:${fideId}`, HISTORY_TTL, async () => {
+    const jar = new Map<string, string>();
+    const page = await request(source, "https://chess-results.com/spielersuche.aspx?lan=1", jar);
+    const field = (name: string) => {
+      const tag = page.html.match(new RegExp(`<input[^>]*name="${name}"[^>]*>`, "i"))?.[0] || "";
+      return decodeEntities(tag.match(/value="([^"]*)"/)?.[1] || "");
+    };
+    if (!field("__VIEWSTATE")) return [];
+    const body = new URLSearchParams({
+      __LASTFOCUS: "", __EVENTTARGET: "", __EVENTARGUMENT: "", __VIEWSTATE: field("__VIEWSTATE"),
+      __VIEWSTATEGENERATOR: field("__VIEWSTATEGENERATOR"), __EVENTVALIDATION: field("__EVENTVALIDATION"),
+      "ctl00$P1$txt_fideID": fideId, "ctl00$P1$combo_Sort": "0",
+      "ctl00$P1$combo_anzahl_zeilen": "1", "ctl00$P1$cb_suchen": "Search",
+    });
+    const result = await request(source, page.url, jar, { method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: page.url, Origin: new URL(page.url).origin } });
+    return parseSearchResults(result.html).filter((hit) => hit.fideId === fideId).slice(0, 30);
+  });
+}
+
+function glanceFrom(fideId: string, hits: SearchHit[]): OpponentGlance {
+  const recent = [...hits]
+    .sort((a, b) => (a.endDate < b.endDate ? 1 : a.endDate > b.endDate ? -1 : 0))
+    .slice(0, 3)
+    .map((hit) => ({
+      name: hit.tournamentName,
+      endDate: hit.endDate,
+      rank: hit.rank,
+      rounds: hit.rounds,
+      fieldSize: hit.fieldSize,
+    }));
+  const ranks = hits.map((hit) => hit.rank).filter((rank): rank is number => rank != null && rank > 0);
+  return {
+    fideId,
+    tournaments: hits.length,
+    bestRank: ranks.length ? Math.min(...ranks) : null,
+    recent,
+  };
+}
+
+async function withGlance(source: SourceContext, next: NextGame, tournamentId: string): Promise<NextGame> {
+  if (/^(brīvs|bye|spielfrei)$/i.test(next.opponent.trim())) return next;
+  try {
+    let fide = next.opponentFideId && next.opponentFideId !== "0" ? next.opponentFideId : "";
+    if (!fide && next.opponentSnr) {
+      const html = (await request(source, `https://chess-results.com/tnr${tournamentId}.aspx?lan=1&art=9&snr=${next.opponentSnr}`)).html;
+      fide = parsePlayerCard(html).fideId;
+    }
+    if (!fide || fide === "0" || fide === FIDE_ID) return next;
+    const hits = await searchByFide(source, fide);
+    if (!hits.length) return { ...next, opponentFideId: fide };
+    return { ...next, opponentFideId: fide, glance: glanceFrom(fide, hits) };
+  } catch {
+    return next;
+  }
+}
+
 function formField(html: string, name: string): string {
   const tag = html.match(new RegExp(`<input[^>]*name="${name}"[^>]*>`, "i"))?.[0] || "";
   return decodeEntities(tag.match(/value="([^"]*)"/)?.[1] || "");
@@ -208,6 +265,7 @@ export async function scrapeDossier(source: SourceContext): Promise<Extract<Load
       }
       neighbors = await source.memo(`standings:${hit.id}`, 15 * 60_000, async () => parseStandings((await request(source, `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=1`)).html, card.name, hit.snr));
     }
+    if (next) next = await withGlance(source, next, hit.id);
     preparedHits.push({ ...hit, endDate });
     cards.push(card); metas.push(meta); nextGames.push(next); standings.push(neighbors); lastRoundAt.push("");
   }

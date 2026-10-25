@@ -7,6 +7,7 @@ export type Game = {
   board: number;
   opponent: string;
   opponentFideId?: string;
+  opponentSnr?: string;
   opponentTitle: string;
   opponentRating: number | null;
   opponentFed: string;
@@ -34,6 +35,21 @@ export type NextGame = {
   opponentPoints: number | null;
   url: string;
   startsAt: string;
+  opponentSnr?: string;
+  glance?: OpponentGlance | null;
+};
+
+export type OpponentGlance = {
+  fideId: string;
+  tournaments: number;
+  bestRank: number | null;
+  recent: Array<{
+    name: string;
+    endDate: string;
+    rank: number | null;
+    rounds: number | null;
+    fieldSize: number | null;
+  }>;
 };
 
 export type StandingRow = {
