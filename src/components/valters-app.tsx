@@ -917,7 +917,7 @@ function GameTable({ games }: { games: Game[] }) {
   if (games.length === 0) return <p className="text-sm text-muted">Partijas vēl nav publicētas.</p>;
   return (
     <div>
-      <div className="mb-2 hidden grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_9.5rem] gap-3 px-3 text-xs font-medium text-muted sm:grid">
+      <div className="mb-2 hidden grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_8rem] gap-3 px-3 text-xs font-medium text-muted sm:grid">
         <span>Kārta</span>
         <span>Pretinieks</span>
         <span>Krāsa</span>
@@ -941,7 +941,7 @@ function GameTable({ games }: { games: Game[] }) {
                 {game.board > 0 ? ` · ${game.board}. galds` : ""}
               </span>
             </p>
-            <div className="hidden items-center gap-3 sm:grid sm:grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_9.5rem]">
+            <div className="hidden items-center gap-3 sm:grid sm:grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_8rem]">
               <span className="text-sm text-muted tabular-nums">{game.round}.</span>
               <span className="min-w-0">
                 <span className="block truncate font-medium">{game.opponent}</span>
@@ -1083,9 +1083,9 @@ function ResultMark({ result, labeled = false }: { result: GameResult; labeled?:
     );
   }
   return (
-    <span className="grid w-[9.5rem] shrink-0 grid-cols-[2.75rem_6.25rem] items-center gap-1" aria-label={`${view.label}, ${view.name}`}>
+    <span className="grid w-[8rem] shrink-0 grid-cols-[2.75rem_4.75rem] items-center gap-1" aria-label={`${view.label}, ${view.name}`}>
       {mark}
-      <span className="whitespace-nowrap text-sm">{view.name}</span>
+      <span className="whitespace-nowrap text-[13px] leading-none">{view.name}</span>
     </span>
   );
 }
