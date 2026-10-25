@@ -1083,7 +1083,7 @@ function ResultMark({ result, labeled = false }: { result: GameResult; labeled?:
     );
   }
   return (
-    <span className="grid w-[8rem] shrink-0 grid-cols-[2.75rem_4.75rem] items-center gap-1" aria-label={`${view.label}, ${view.name}`}>
+    <span className="-mr-2 grid w-[8rem] shrink-0 grid-cols-[2.75rem_4.75rem] items-center gap-1" aria-label={`${view.label}, ${view.name}`}>
       {mark}
       <span className="whitespace-nowrap text-[13px] leading-none">{view.name}</span>
     </span>
