@@ -650,7 +650,6 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
     if (opponentSort !== "name") return onceOpponents;
     return [...sortedRepeats, ...onceOpponents].sort((a, b) => a.name.localeCompare(b.name, "lv"));
   }, [opponentSort, sortedRepeats, onceOpponents]);
-  const active = repeats.find((opponent) => opponent.key === selected) ?? onceOpponents.find((opponent) => opponent.key === selected) ?? null;
 
   return (
     <div className="grid gap-6">
@@ -752,6 +751,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
                       pressed={opponent.key === selected}
                       onSelect={() => setSelected((current) => (current === opponent.key ? null : opponent.key))}
                     />
+                    {opponent.key === selected ? <Meetings opponent={opponent} /> : null}
                   </li>
                 ))}
               </ul>
@@ -768,6 +768,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
                       pressed={opponent.key === selected}
                       onSelect={() => setSelected((current) => (current === opponent.key ? null : opponent.key))}
                     />
+                    {opponent.key === selected ? <Meetings opponent={opponent} /> : null}
                   </li>
                 ))}
               </ul>
@@ -775,7 +776,6 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
           ) : repeats.length === 0 && shownOpponents.length === 0 ? (
             <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
           ) : null}
-          {active ? <Meetings opponent={active} /> : null}
         </>
       )}
     </div>
@@ -1010,7 +1010,10 @@ function Meetings({ opponent }: { opponent: Opponent }) {
         <h3 className="text-xl">{opponent.name}</h3>
       </div>
       <ul className="grid gap-3">
-        {opponent.meetings.map((game) => (
+        {opponent.meetings.length === 0 ? (
+          <li className="text-sm text-muted">Par šo pretinieku partiju detaļas nav saglabātas.</li>
+        ) : (
+          opponent.meetings.map((game) => (
           <li key={`${game.tournamentId}-${game.round}`} className="border-t border-line pt-3 first:border-t-0 first:pt-0">
             <div className="flex items-start justify-between gap-3">
               <PieceMark color={game.color} />
@@ -1029,7 +1032,8 @@ function Meetings({ opponent }: { opponent: Opponent }) {
               <ResultMark result={game.result} />
             </div>
           </li>
-        ))}
+          ))
+        )}
       </ul>
     </div>
   );
