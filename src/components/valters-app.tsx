@@ -614,11 +614,24 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
     }
     return rows.sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"));
   }, [opponents]);
+  const sortedRepeats = useMemo(() => {
+    const rows = [...repeats];
+    rows.sort((a, b) =>
+      opponentSort === "name"
+        ? a.name.localeCompare(b.name, "lv")
+        : b.games - a.games || a.name.localeCompare(b.name, "lv"),
+    );
+    return rows;
+  }, [repeats, opponentSort]);
   const repeatNames = useMemo(() => new Set(repeats.map((opponent) => fold(opponent.name))), [repeats]);
   const onceOpponents = useMemo(
     () => orderedOpponents.filter((opponent) => !repeatNames.has(fold(opponent.name))),
     [orderedOpponents, repeatNames],
   );
+  const shownOpponents = useMemo(() => {
+    if (opponentSort !== "name") return onceOpponents;
+    return [...sortedRepeats, ...onceOpponents].sort((a, b) => a.name.localeCompare(b.name, "lv"));
+  }, [opponentSort, sortedRepeats, onceOpponents]);
   const active = repeats.find((opponent) => opponent.key === selected) ?? onceOpponents.find((opponent) => opponent.key === selected) ?? null;
 
   return (
@@ -710,11 +723,11 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
         </section>
       ) : (
         <>
-          {repeats.length > 0 ? (
+          {opponentSort === "games" && sortedRepeats.length > 0 ? (
             <section>
               <SectionTitle title="Atkārtoti pretinieki" hint="" />
               <ul className="grid gap-1.5">
-                {repeats.map((opponent) => (
+                {sortedRepeats.map((opponent) => (
                   <li key={opponent.key}>
                     <OpponentRow
                       opponent={opponent}
@@ -726,11 +739,11 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
               </ul>
             </section>
           ) : null}
-          {onceOpponents.length > 0 ? (
+          {shownOpponents.length > 0 ? (
             <section>
               <SectionTitle title="Pretinieki" hint="" />
               <ul className="grid gap-1.5">
-                {onceOpponents.map((opponent) => (
+                {shownOpponents.map((opponent) => (
                   <li key={opponent.key}>
                     <OpponentRow
                       opponent={opponent}
@@ -741,7 +754,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
                 ))}
               </ul>
             </section>
-          ) : repeats.length === 0 ? (
+          ) : repeats.length === 0 && shownOpponents.length === 0 ? (
             <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
           ) : null}
           {active ? <Meetings opponent={active} /> : null}
