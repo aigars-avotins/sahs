@@ -327,7 +327,7 @@ function TopBar({
             <Knight tone="white" className="size-10 p-0.5 sm:size-12" />
           </button>
           <h1 className="min-w-0 self-start truncate text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
-          <div className="flex shrink-0 items-start gap-2 self-start">
+          <div className="flex w-full shrink-0 items-start justify-end gap-2 self-start">
             <button
               type="button"
               onClick={onRefresh}
