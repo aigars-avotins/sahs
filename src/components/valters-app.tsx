@@ -926,7 +926,7 @@ function GameTable({ games }: { games: Game[] }) {
       </div>
       <ol className="grid gap-2">
         {games.map((game) => (
-          <li key={`${game.tournamentId}-${game.round}-${game.opponent}`} className="rounded-xl bg-bg px-3 py-3">
+          <li key={`${game.tournamentId}-${game.round}-${game.opponent}`} className="rounded-xl bg-bg py-3 pr-3 pl-0 sm:px-3">
             <div className="flex items-start justify-between gap-4 sm:hidden">
               <span className="min-w-0">
                 <span className="block truncate font-medium">{game.opponent}</span>
