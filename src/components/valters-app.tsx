@@ -24,22 +24,27 @@ import {
   storedPairings,
   unlockSound,
 } from "@/lib/chess/alerts";
+import { PLAYER, SPORT_CLASS } from "@/lib/chess/config";
 import { getDossier } from "@/lib/chess/dossier";
 import {
   dayStatus,
+  foldName,
   formatDate,
   formatPoints,
   formatStamp,
+  isBye,
   isoDate,
 } from "@/lib/chess/parse";
+import { paceOf, scopedDossier } from "@/lib/chess/stats";
+import { safeStorage } from "@/lib/storage";
 import type { Dossier, Game, GameResult, LoadResult, Opponent, OpponentGlance, PieceColor, Tournament } from "@/lib/chess/types";
 
-const DISPLAY_NAME = "Valters Avotiņš";
+const DISPLAY_NAME = PLAYER.displayName;
 
-function freshnessLabel(iso: string): string {
+function freshnessLabel(iso: string, now: number): string {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) return "nav zināms";
-  const mins = Math.max(0, Math.round((Date.now() - then) / 60_000));
+  const mins = Math.max(0, Math.round((now - then) / 60_000));
   if (mins < 1) return "tikko";
   if (mins < 60) return `pirms ${mins} min`;
   const hours = Math.floor(mins / 60);
@@ -88,15 +93,7 @@ function displayTournamentName(name: string, endDate: string): string {
 }
 
 function sportClass(tournament: Tournament): string | null {
-  const known: Record<string, string> = {
-    "1332728": "Iesācēji",
-    "1374865": "Iesācēji",
-    "1438074": "Iesācēji",
-    "1465390": "4. sporta klase",
-    "1487595": "4. sporta klase",
-    "1465850": "3. sporta klase",
-  };
-  if (known[tournament.id]) return known[tournament.id];
+  if (SPORT_CLASS[tournament.id]) return SPORT_CLASS[tournament.id];
   const name = tournament.name.toLowerCase();
   if (name.includes("iesācēj")) return "Iesācēji";
   if (/3\s*\.?\s*sp\.?\s*kl/.test(name)) return "3. sporta klase";
@@ -150,7 +147,7 @@ function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<v
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof Notification === "undefined") return;
-    setEnabled(localStorage.getItem(ALERT_KEY) === "1" && Notification.permission === "granted");
+    setEnabled(safeStorage.get(ALERT_KEY) === "1" && Notification.permission === "granted");
   }, []);
 
   useEffect(() => {
@@ -175,7 +172,7 @@ function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<v
 
   async function toggle() {
     if (enabled) {
-      localStorage.removeItem(ALERT_KEY);
+      safeStorage.remove(ALERT_KEY);
       setEnabled(false);
       setNote("Paziņojumi izslēgti.");
       return;
@@ -186,7 +183,7 @@ function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<v
     }
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
-      localStorage.removeItem(ALERT_KEY);
+      safeStorage.remove(ALERT_KEY);
       setEnabled(false);
       setNote("Paziņojumi ir bloķēti. Atļauj tos pārlūka iestatījumos.");
       return;
@@ -196,7 +193,7 @@ function usePairingAlerts(dossier: Dossier | null, refreshQuiet: () => Promise<v
     } catch {
       /* page notification still works */
     }
-    localStorage.setItem(ALERT_KEY, "1");
+    safeStorage.set(ALERT_KEY, "1");
     unlockSound();
     if (dossier) rememberPairings(pairingKeys(dossier));
     setEnabled(true);
@@ -227,7 +224,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
 
   const refreshQuiet = useCallback(async () => {
     try {
-      setResult(await getDossier({ data: { refresh: true } }));
+      setResult(await getDossier());
     } catch (error) {
       const message = error instanceof Error ? error.message : "Neizdevās atjaunot.";
       setResult((current) =>
@@ -333,18 +330,23 @@ function TopBar({
   onTab: (tab: PageTab) => void;
 }) {
   const [dark, setDark] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
+    // Keep "pirms N min" honest while the page stays open.
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
   }, []);
   function toggleTheme() {
     const next = document.documentElement.dataset.theme === "dark" ? "" : "dark";
     if (next) document.documentElement.dataset.theme = "dark";
     else delete document.documentElement.dataset.theme;
-    localStorage.setItem("valters-theme", next ? "dark" : "light");
+    safeStorage.set("valters-theme", next ? "dark" : "light");
     setDark(Boolean(next));
   }
   const live = dossier.tournaments.find((tournament) => tournament.nextGame);
-  const fresh = freshnessLabel(dossier.fetchedAt);
+  const fresh = freshnessLabel(dossier.fetchedAt, now);
   const stamped = formatStamp(dossier.fetchedAt);
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
@@ -387,6 +389,7 @@ function TopBar({
           </p>
           <p
             className="self-end whitespace-nowrap text-right text-[11px] leading-none text-muted sm:text-xs"
+            suppressHydrationWarning
             title={stamped ? `Atjaunots ${stamped}` : undefined}
           >
             {loading ? "Notiek" : `Atjaunots ${fresh}`}
@@ -496,30 +499,10 @@ function StatsView({ dossier }: { dossier: Dossier }) {
   );
 }
 
-function fold(value: string): string {
-  return value.toLocaleLowerCase("lv").replace(/[āčēģīķļņšūžŗ]/g, (letter) => {
-    const map: Record<string, string> = {
-      ā: "a",
-      č: "c",
-      ē: "e",
-      ģ: "g",
-      ī: "i",
-      ķ: "k",
-      ļ: "l",
-      ņ: "n",
-      š: "s",
-      ū: "u",
-      ž: "z",
-      ŗ: "r",
-    };
-    return map[letter] ?? letter;
-  });
-}
-
 function matchesQuery(haystack: string, query: string): boolean {
-  const words = fold(query).split(/[^a-z0-9]+/).filter(Boolean);
+  const words = foldName(query).split(/[^a-z0-9]+/).filter(Boolean);
   if (words.length === 0) return true;
-  const text = fold(haystack);
+  const text = foldName(haystack);
   return words.every((word) => text.includes(word));
 }
 
@@ -538,36 +521,17 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
   const scoped = useMemo(() => {
     return dossier.tournaments.filter((tournament) => {
       if (year !== "all" && !tournament.endDate.startsWith(year)) return false;
-      const rapid = /rapid|ātr|minut/i.test(tournament.timeControl);
-      if (pace === "rapid" && !rapid) return false;
-      if (pace === "other" && (rapid || !tournament.timeControl)) return false;
+      const kind = paceOf(tournament.timeControl);
+      if (pace === "rapid" && kind !== "rapid") return false;
+      if (pace === "other" && (kind === "rapid" || kind === "unknown")) return false;
       return true;
     });
   }, [dossier.tournaments, year, pace]);
 
-  const scopedOpponents = useMemo(() => {
-    if (year === "all" && pace === "all") return dossier.opponents;
-    const ids = new Set(scoped.map((tournament) => tournament.id));
-    return dossier.opponents.flatMap((opponent) => {
-      const meetings = opponent.meetings.filter((game) => ids.has(game.tournamentId));
-      if (meetings.length === 0) return [];
-      if (meetings.length === opponent.meetings.length) return [opponent];
-      let wins = 0;
-      let draws = 0;
-      let losses = 0;
-      let score = 0;
-      let scored = 0;
-      for (const game of meetings) {
-        if (game.score == null) continue;
-        scored += 1;
-        score += game.score;
-        if (game.result === "win") wins += 1;
-        if (game.result === "draw") draws += 1;
-        if (game.result === "loss") losses += 1;
-      }
-      return [{ ...opponent, meetings, games: meetings.length, wins, draws, losses, score, scored }];
-    });
-  }, [dossier.opponents, scoped, year, pace]);
+  const scopedOpponents = useMemo(
+    () => (year === "all" && pace === "all" ? dossier.opponents : scopedDossier(dossier, scoped).opponents),
+    [dossier, scoped, year, pace],
+  );
 
   const tournaments = useMemo(() => {
     if (!needle) return scoped.map((tournament) => ({ tournament, games: tournament.games }));
@@ -598,25 +562,10 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
     );
   }, [scopedOpponents, needle]);
 
-  const orderedOpponents = useMemo(() => {
-    const totals = new Map<string, number>();
-    for (const opponent of opponents) {
-      const key = fold(opponent.name);
-      totals.set(key, (totals.get(key) ?? 0) + (opponent.meetings.length || opponent.games));
-    }
-    const rows = [...opponents];
-    rows.sort((a, b) => {
-      if (opponentSort === "name") return a.name.localeCompare(b.name, "lv");
-      const byGames = (totals.get(fold(b.name)) ?? 0) - (totals.get(fold(a.name)) ?? 0);
-      return byGames || a.name.localeCompare(b.name, "lv");
-    });
-    return rows;
-  }, [opponents, opponentSort]);
-
   const repeats = useMemo(() => {
     const groups = new Map<string, Opponent[]>();
     for (const opponent of opponents) {
-      const key = fold(opponent.name);
+      const key = foldName(opponent.name);
       groups.set(key, [...(groups.get(key) ?? []), opponent]);
     }
     const rows: Opponent[] = [];
@@ -630,7 +579,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
       const [first] = group;
       rows.push({
         ...first,
-        key: `repeat:${fold(first.name)}`,
+        key: `repeat:${foldName(first.name)}`,
         club: [...new Set(group.map((opponent) => opponent.club).filter(Boolean))].join(" · "),
         games,
         meetings: group.flatMap((opponent) => opponent.meetings),
@@ -641,31 +590,18 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
         scored: group.reduce((sum, opponent) => sum + opponent.scored, 0),
       });
     }
-    return rows.sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"));
+    return rows;
   }, [opponents]);
-  const sortedRepeats = useMemo(() => {
-    const rows = [...repeats];
-    rows.sort((a, b) =>
-      opponentSort === "name"
-        ? a.name.localeCompare(b.name, "lv")
-        : b.games - a.games || a.name.localeCompare(b.name, "lv"),
-    );
-    return rows;
-  }, [repeats, opponentSort]);
-  const repeatNames = useMemo(() => new Set(repeats.map((opponent) => fold(opponent.name))), [repeats]);
-  const onceOpponents = useMemo(
-    () => orderedOpponents.filter((opponent) => !repeatNames.has(fold(opponent.name))),
-    [orderedOpponents, repeatNames],
-  );
+  // Opponents met 2+ times are shown once, merged by name (most young players have no FIDE ID).
   const shownOpponents = useMemo(() => {
-    const rows = [...sortedRepeats, ...onceOpponents];
-    rows.sort((a, b) =>
+    const repeatNames = new Set(repeats.map((opponent) => foldName(opponent.name)));
+    const once = opponents.filter((opponent) => !repeatNames.has(foldName(opponent.name)));
+    return [...repeats, ...once].sort((a, b) =>
       opponentSort === "name"
         ? a.name.localeCompare(b.name, "lv")
         : b.games - a.games || a.name.localeCompare(b.name, "lv"),
     );
-    return rows;
-  }, [opponentSort, sortedRepeats, onceOpponents]);
+  }, [repeats, opponents, opponentSort]);
 
   return (
     <div className="grid gap-6">
@@ -727,9 +663,9 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
               ? tournaments.length === 1
                 ? "1 turnīrs"
                 : `${tournaments.length} turnīri`
-              : onceOpponents.length + repeats.length === 1
+              : shownOpponents.length === 1
                 ? "1 pretinieks"
-                : `${onceOpponents.length + repeats.length} pretinieki`}
+                : `${shownOpponents.length} pretinieki`}
           </p>
         ) : null}
       </div>
@@ -772,9 +708,9 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
                 ))}
               </ul>
             </section>
-          ) : repeats.length === 0 && shownOpponents.length === 0 ? (
+          ) : (
             <Empty>{needle ? "Nav pretinieku, kas atbilst meklējumam." : "Vēl nav pretinieku šajos turnīros."}</Empty>
-          ) : null}
+          )}
         </>
       )}
     </div>
@@ -1117,15 +1053,11 @@ function colorName(color: PieceColor): string {
 }
 
 function priorGames(dossier: Dossier, name: string): Game[] {
-  const key = fold(name);
+  const key = foldName(name);
   if (!key || isBye(name)) return [];
   return dossier.tournaments
     .flatMap((tournament) => tournament.games)
-    .filter((game) => fold(game.opponent) === key && game.score != null);
-}
-
-function isBye(name: string): boolean {
-  return /^(brīvs|bye|spielfrei)$/i.test(name.trim());
+    .filter((game) => foldName(game.opponent) === key && game.score != null);
 }
 
 function resultWord(result: GameResult): string {
@@ -1141,7 +1073,8 @@ function shortTime(value: string): string {
   const seconds = text.match(/\+\s*(\d+)/);
   if (!minutes) return text;
   const clock = seconds ? `${minutes[1]}+${seconds[1]}` : `${minutes[1]} min`;
-  const pace = /blitz|žaub/i.test(text) ? "Blitz" : /rapid|ātr/i.test(text) ? "Rapid" : "";
+  const kind = paceOf(text);
+  const pace = kind === "blitz" ? "Blitz" : kind === "rapid" ? "Rapid" : "";
   return pace ? `${pace} · ${clock}` : clock;
 }
 
@@ -1238,7 +1171,7 @@ function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament:
           )}
           <p className="mt-1 text-sm text-pine-soft">
             {placeLine(tournament)}
-            {next.startsAt ? ` · sākums ${next.startsAt}` : tournament.lastRoundAt ? ` · iepriekšējās kārtas sākums ${tournament.lastRoundAt}` : ""}
+            {next.startsAt ? ` · sākums ${next.startsAt}` : ""}
           </p>
           <Neighbors tournament={tournament} light />
           <a
@@ -1260,6 +1193,8 @@ function LiveStatus({ tournament }: { tournament: Tournament }) {
   const played = new Set(tournament.games.filter((game) => game.score != null).map((game) => game.round)).size;
   const last = [...tournament.games].sort((a, b) => b.round - a.round)[0];
   const waiting = tournament.awaitingPairing;
+  // Without a published round count we cannot claim the tournament is over.
+  const finished = tournament.roundsScheduled != null && played >= tournament.roundsScheduled;
   return (
     <section className="rounded-2xl border border-line bg-surface px-5 py-4">
       <p className="text-sm font-medium tracking-wide text-pine uppercase">
@@ -1268,18 +1203,23 @@ function LiveStatus({ tournament }: { tournament: Tournament }) {
       <p className="mt-2 text-lg">
         {waiting
           ? `Nākamā kārta vēl nav chess-results. Nospēlētas ${played}${tournament.roundsScheduled ? ` no ${tournament.roundsScheduled}` : ""} kārtām.`
-          : `Visas ${tournament.roundsScheduled ?? played} kārtas ir nospēlētas. Nākamajā turnīrā te parādīsies galdiņš un krāsa.`}
+          : finished
+            ? `Visas ${tournament.roundsScheduled} kārtas ir nospēlētas. Nākamajā turnīrā te parādīsies galdiņš un krāsa.`
+            : `${playedRounds(played)}${tournament.roundsScheduled ? ` no ${tournament.roundsScheduled}` : ". Kārtu skaits chess-results nav publicēts"}. Nākamā izloze parādīsies pēc atjaunošanas.`}
       </p>
       {last ? (
         <p className="mt-2 text-sm text-muted">
           Pēdējā: {last.round}. kārta
           {last.board > 0 ? `, ${last.board}. galds` : ""}, {colorName(last.color).toLocaleLowerCase("lv")}, pret {last.opponent}.
-          {tournament.lastRoundAt ? ` Publicēta ${tournament.lastRoundAt}.` : ""}
         </p>
       ) : null}
       <Neighbors tournament={tournament} />
     </section>
   );
+}
+
+function playedRounds(count: number): string {
+  return count % 10 === 1 && count % 100 !== 11 ? `Nospēlēta ${count} kārta` : `Nospēlētas ${count} kārtas`;
 }
 
 function RoundNote({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
@@ -1293,7 +1233,7 @@ function RoundNote({ dossier, tournament }: { dossier: Dossier; tournament: Tour
         {colorName(next.color).toLocaleLowerCase("lv")}
         {bye ? ", brīva kārta" : ` pret ${next.opponent}`}.
         {bye ? "" : ` ${historyLine(played)}.`}
-        {next.startsAt ? ` Sākums ${next.startsAt}.` : tournament.lastRoundAt ? ` Iepriekšējās kārtas sākums ${tournament.lastRoundAt}.` : ""}
+        {next.startsAt ? ` Sākums ${next.startsAt}.` : ""}
       </p>
     );
   }
@@ -1767,8 +1707,6 @@ function summaryText(dossier: Dossier): string {
       `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}. ${historyLine(played)}.`,
     );
     if (next.startsAt) lines.push(`Sākums ${next.startsAt}.`);
-  } else if (tournament.lastRoundAt) {
-    lines.push(`Iepriekšējā kārta publicēta ${tournament.lastRoundAt}.`);
   }
   if (tournament.standings?.above) {
     lines.push(`Virs: ${tournament.standings.above.name}, ${formatPoints(tournament.standings.above.points)}.`);

@@ -9,6 +9,7 @@ import type {
   Standings,
   Tournament,
 } from "./types";
+import { PLAYER } from "./config";
 
 const NAMED: Record<string, string> = {
   amp: "&",
@@ -177,10 +178,10 @@ function tournamentId(href: string): string {
   return href.match(/tnr(\d+)/i)?.[1] ?? "";
 }
 
-function extractRows(html: string, classPrefix: "CRg" | "CRng"): string[] {
+/** Whole `<tr>` blocks (nested rows included) whose opening tag matches `opener`. */
+function rowsMatching(html: string, opener: RegExp): string[] {
   const rows: string[] = [];
-  const re = new RegExp(`<tr\\b[^>]*class=["'][^"']*\\b${classPrefix}[12]\\b[^"']*["'][^>]*>`, "gi");
-  for (const match of html.matchAll(re)) {
+  for (const match of html.matchAll(opener)) {
     const start = match.index ?? 0;
     let cursor = start + match[0].length;
     let depth = 1;
@@ -199,6 +200,15 @@ function extractRows(html: string, classPrefix: "CRg" | "CRng"): string[] {
     }
   }
   return rows;
+}
+
+function extractRows(html: string, classPrefix: "CRg" | "CRng"): string[] {
+  return rowsMatching(html, new RegExp(`<tr\\b[^>]*class=["'][^"']*\\b${classPrefix}[12]\\b[^"']*["'][^>]*>`, "gi"));
+}
+
+/** Ranking tables: stricter than extractRows, the class must be the row's only attribute. */
+function rankingRows(html: string): string[] {
+  return rowsMatching(html, /<tr class="CRng[12](?:\s[^"]*)?"\s*>/gi);
 }
 
 export type SearchHit = {
@@ -449,40 +459,21 @@ function opponentKey(game: Game, identities: Map<string, Set<string>>): string {
   return `name:${nameKey(game)}::${foldName(game.opponentClub)}`;
 }
 
+export function isBye(name: string): boolean {
+  return /^(brīvs|bye|spielfrei)$/i.test(name.trim());
+}
+
 export function parseRoundClock(html: string): string {
   const flat = cleanText(html.replace(/<script[\s\S]*?<\/script>/gi, " "));
   return flat.match(/Round\s+\d+\s+on\s+[\d/]+\s+at\s+(\d{1,2}:\d{2})/i)?.[1] ?? "";
 }
 
-function foldName(value: string): string {
+/** Lowercases and strips Latvian diacritics; opponent name matching depends on exactly this. */
+export function foldName(value: string): string {
   const map: Record<string, string> = {
     ā: "a", č: "c", ē: "e", ģ: "g", ī: "i", ķ: "k", ļ: "l", ņ: "n", š: "s", ū: "u", ž: "z", ŗ: "r",
   };
   return value.toLocaleLowerCase("lv").replace(/[āčēģīķļņšūžŗ]/g, (letter) => map[letter] ?? letter);
-}
-
-function rankingRows(html: string): string[] {
-  const rows: string[] = [];
-  const re = /<tr class="CRng[12](?:\s[^"]*)?"\s*>/gi;
-  for (const match of html.matchAll(re)) {
-    const start = match.index ?? 0;
-    let cursor = start + match[0].length;
-    let depth = 1;
-    while (cursor < html.length && depth > 0) {
-      const nextOpen = html.indexOf("<tr", cursor);
-      const nextClose = html.indexOf("</tr>", cursor);
-      if (nextClose < 0) break;
-      if (nextOpen >= 0 && nextOpen < nextClose) {
-        depth += 1;
-        cursor = nextOpen + 3;
-      } else {
-        depth -= 1;
-        cursor = nextClose + 5;
-        if (depth === 0) rows.push(html.slice(start, cursor));
-      }
-    }
-  }
-  return rows;
 }
 
 export function parseStandings(html: string, playerName: string, snr?: string): Standings | null {
@@ -544,7 +535,6 @@ export function buildDossier(input: {
   metas: Array<TournamentMeta | null>;
   nextGames: Array<NextGame | null>;
   standings: Array<Standings | null>;
-  lastRoundAt: string[];
   fetchedAt: string;
   nextCheckAt?: string;
   today: string;
@@ -594,7 +584,6 @@ export function buildDossier(input: {
       awaitingPairing: Boolean(live && !nextGame && scheduled != null && scoredRounds < scheduled),
       nextGame,
       standings: input.standings[index] ?? null,
-      lastRoundAt: input.lastRoundAt[index] ?? "",
       games,
     };
   });
@@ -668,7 +657,7 @@ export function buildDossier(input: {
     .filter((rank): rank is number => rank != null && rank > 0);
   const profile = tournaments[0];
   const missing = tournaments.filter((tournament) => tournament.partial).length;
-  const siteName = input.hits.find((hit) => hit.name)?.name || "Avotins, Valters";
+  const siteName = input.hits.find((hit) => hit.name)?.name || PLAYER.sourceName;
 
   return {
     player: {

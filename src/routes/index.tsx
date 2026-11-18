@@ -3,7 +3,7 @@ import { ValtersApp, ValtersPending } from "@/components/valters-app";
 import { getDossier } from "@/lib/chess/dossier";
 
 export const Route = createFileRoute("/")({
-  loader: () => getDossier({ data: { refresh: false } }),
+  loader: () => getDossier(),
   pendingComponent: ValtersPending,
   pendingMs: 200,
   component: Home,

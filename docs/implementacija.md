@@ -10,12 +10,14 @@ Publiskā lapa ir Cloudflare Worker. Pārlūks nesaņem chess-results sīkdatnes
 | `src/lib/chess/scrape.server.ts` | Meklēšana pēc FIDE, turnīru kartītes, izloze, pretinieka kopsavilkums |
 | `src/lib/chess/parse.ts` | HTML pārveidošana par turnīriem, partijām un izlozes rindu |
 | `src/lib/chess/types.ts` | `Tournament`, `NextGame`, `OpponentGlance` |
+| `src/lib/chess/config.ts` | Spēlētāja vārds, FIDE numurs, turnīri bez FIDE numura, vietas un sporta klases |
+| `src/lib/chess/stats.ts` | Tempa noteikšana (`paceOf`) un filtrētā statistika (`scopedDossier`) |
 | `src/lib/chess/coordinator.server.ts` | Kopīgā kešatmiņa, intervāli un kļūdu aizture |
 | `src/chess-cache.ts` | Durable Object glabātuve |
 
 ## Nākamā partija
 
-Aktīvam turnīram vispirms tiek lasīta Valtera kartīte (`art=9`). Ja tajā ir partija bez rezultāta, tā ir nākamais pāris. Papildus tiek lasīta kārtas izloze (`art=2`), lai paņemtu galdiņu, krāsu un publicēšanas laiku.
+Aktīvam turnīram vispirms tiek lasīta Valtera kartīte (`art=9`). Ja tajā ir partija bez rezultāta, tā ir nākamais pāris. Papildus tiek lasīta kārtas izloze (`art=2`), lai paņemtu galdiņu, krāsu un kārtas sākuma laiku. Izlozes publicēšanas laiku chess-results nedod, tāpēc lapa to nerāda.
 
 Pretinieka FIDE numurs izlozes rindā parasti nav. Tas tiek lasīts no pretinieka kartītes lauka `Fide-ID`, ja rindā ir `snr`. Pēc tam `spielersuche` tiek izsaukta ar šo numuru. Rezultāts ir `OpponentGlance`: turnīru skaits, labākā vieta un trīs jaunākie turnīri. Meklēšana tiek kešota ar vēstures intervālu, lai katra atjaunošana neatsauktu meklēšanu no jauna.
 
@@ -25,7 +27,7 @@ Iepriekšējās savstarpējās partijas netiek meklētas pretinieka profilā. T�
 
 Rezultāta cipara kolonna ir fiksēta: aplis 2.75rem un vārds 4.75rem, bloks 8rem, ar nelielu pabīdi pa labi. Mobilajā partiju rindā kreisā atkāpe ir noņemta, lai vārds sakrīt ar pirmo rezultāta lauciņu.
 
-Atkārtotie pretinieki tiek izņemti no otrā saraksta pēc salocīta vārda. Zirga poga izsauc lapas pārlādi, kas atgriež Aktuālo.
+Pretinieku sarakstā tie, kas sastapti vairākas reizes, tiek apvienoti pēc salocīta vārda (`foldName`), nevis pēc FIDE numura, jo iesācējiem tā bieži nav. Gada un tempa filtrs pārrēķina pretiniekus ar `scopedDossier`, tāpēc “N×” skaita tikai nospēlētās partijas arī filtrētā skatā. Lokālās glabātuves piekļuve iet caur `safeStorage`, lai bloķēta glabātuve neapturētu lapu. Zirga poga izsauc lapas pārlādi, kas atgriež Aktuālo.
 
 ## Pārbaudes
 

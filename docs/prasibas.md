@@ -12,7 +12,11 @@ Aktuālais rāda pēdējo vai notiekošo turnīru: statusu, nosaukumu, datumu un
 
 Turnīru sarakstā noslēdzies turnīrs ir pelēks. Zaļš statuss ir tikai notiekošam. Datums, kas jau ir nosaukumā, otru reizi netiek rādīts. Turnīra kartē nav “Lapā:” laika un nav performance.
 
-Pretinieki, kas ir blokā “Atkārtotie pretinieki”, galvenajā sarakstā vairs neparādās. Abiem blokiem nav paskaidrojošā teikuma apakšā.
+Pretinieki ir vienā sarakstā. Ar ko spēlēts vairāk nekā vienu reizi, tas parādās vienu reizi, apvienots pēc vārda un uzvārda, jo daudziem šī līmeņa spēlētājiem nav FIDE numura. Sarakstam nav paskaidrojošā teikuma apakšā.
+
+Tempa filtrs izmanto FIDE robežas: zibšahs līdz 10 minūtēm, ātrais šahs vairāk par 10 un mazāk par 60 minūtēm, klasiskais no 60 minūtēm (pamatlaiks + 60 gājienu pieliktais laiks). Ja kontroli nevar nolasīt, turnīrs ir tikai filtrā “Visi”.
+
+Ja kārtu skaits nav publicēts, lapa neraksta, ka visas kārtas ir nospēlētas.
 
 Statistikā nav virsrakstu “turnīri, bilance un krāsa” un nav teikuma “Katrs stabiņš ir viens turnīrs.” Punktu īpatsvara grafikam ir fiksēta 0–100% skala.
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dayStatus, parsePlayerCard, parseRoundClock, parseRoundPairing, parseTournamentMeta, pendingGameFromCard, rigaToday } from "../src/lib/chess/parse";
+import { dayStatus, isBye, parsePlayerCard, parseRoundClock, parseRoundPairing, parseTournamentMeta, pendingGameFromCard, rigaToday } from "../src/lib/chess/parse";
 import { paceOf, scopedDossier, scoreRate } from "../src/lib/chess/stats";
 import { dossier, fixture } from "./helpers";
 
@@ -50,4 +50,19 @@ test("an archived tournament with deliberately hidden details still permits load
   const meta=parseTournamentMeta(fixture('archived-tournament'));
   assert.equal(meta.detailsHidden,true);assert.equal(meta.eventDate,'');assert.equal(meta.roundsScheduled,null);
   assert.throws(()=>parseTournamentMeta('<title>Unexpected proxy page</title>'));
+});
+test("FIDE pace boundaries: 10 min is blitz, 60 min is standard, plain minutes are not rapid", () => {
+  assert.equal(paceOf("10 min"), "blitz"); assert.equal(paceOf("11 min"), "rapid");
+  assert.equal(paceOf("50 min + 10 sec"), "classical"); assert.equal(paceOf("60 min"), "classical");
+  assert.equal(paceOf("90 minutes + 30 seconds"), "classical");
+});
+test("a year/pace filter keeps opponent game counts to played games only", () => {
+  const data = dossier(); const scoped = scopedDossier(data, data.tournaments);
+  assert.equal(scoped.opponents.find(o => o.name.includes("Kalniņš"))?.games, 0);
+  assert.equal(scoped.opponents.find(o => o.name.includes("Kalniņš"))?.pending, 1);
+  assert.deepEqual(scoped.totals, data.totals);
+});
+test("bye names are recognized in every source language", () => {
+  for (const name of ["brīvs", "bye", " Spielfrei "]) assert.equal(isBye(name), true);
+  assert.equal(isBye("Byers, Anna"), false);
 });

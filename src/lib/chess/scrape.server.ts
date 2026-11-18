@@ -1,65 +1,15 @@
 import {
   buildDossier, countParticipants, decodeEntities, parsePlayerCard, parseRoundClock,
   parseRoundPairing, parseSearchResults, parseStandings, parseTournamentMeta,
-  pendingGameFromCard, rigaToday, type SearchHit,
+  isBye, pendingGameFromCard, rigaToday, type SearchHit,
 } from "./parse";
+import { EXTRA_PLACE, EXTRA_TOURNAMENTS, PLAYER } from "./config";
 import { ACTIVE_TTL, HISTORY_TTL, META_TTL, SEARCH_TTL, SourceError, type SourceContext } from "./coordinator.server";
 import type { LoadResult, NextGame, OpponentGlance } from "./types";
-const FIDE_ID = "11662255";
+const FIDE_ID = PLAYER.fideId;
 const UA = "ValtersAssistant/2.0 (personal chess dashboard; +https://kalns.eu)";
 const MAX_TOURNAMENTS = 100;
-const EXTRA_TOURNAMENTS: SearchHit[] = [
-  {
-    id: "1332728",
-    snr: "4",
-    name: "Avotiņš, Valters",
-    fideId: "0",
-    club: "",
-    fed: "LAT",
-    tournamentName: "V Chess Festival Cēsis 2026 - Turnīrs iesācējiem",
-    endDate: "",
-    rank: null,
-    rounds: null,
-    fieldSize: null,
-    playerHref: "tnr1332728.aspx?lan=1&art=9&snr=4",
-    tournamentHref: "tnr1332728.aspx?lan=1",
-  },
-  {
-    id: "1438074",
-    snr: "4",
-    name: "Avotiņš, Valters",
-    fideId: "0",
-    club: "",
-    fed: "LAT",
-    tournamentName: "SmartCup 2026 - I posms (D turnīrs - iesācēji)",
-    endDate: "",
-    rank: null,
-    rounds: null,
-    fieldSize: null,
-    playerHref: "tnr1438074.aspx?lan=1&art=9&snr=4",
-    tournamentHref: "tnr1438074.aspx?lan=1",
-  },
-  {
-    id: "1374865",
-    snr: "2",
-    name: "Avotiņš, Valters",
-    fideId: "0",
-    club: "",
-    fed: "LAT",
-    tournamentName: "Šahatons 2026- D",
-    endDate: "",
-    rank: null,
-    rounds: null,
-    fieldSize: null,
-    playerHref: "tnr1374865.aspx?lan=1&art=9&snr=2",
-    tournamentHref: "tnr1374865.aspx?lan=1",
-  },
-];
-
-const EXTRA_PLACE: Record<string, string> = {
-  "1332728": "Cēsis",
-  "1374865": "Rīga",
-};
+const SEARCH_URL = "https://chess-results.com/spielersuche.aspx?lan=1";
 
 function storeCookies(jar: Map<string, string>, response: Response) {
   const list = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
@@ -95,23 +45,25 @@ async function request(source: SourceContext, url: string, jar = new Map<string,
   }
   throw new SourceError("Avots pārāk daudz novirzīja.");
 }
+/** Player search by FIDE ID; null when the search form itself is not recognized. */
+async function searchFide(source: SourceContext, fideId: string): Promise<SearchHit[] | null> {
+  const jar = new Map<string, string>();
+  const page = await request(source, SEARCH_URL, jar);
+  if (!formField(page.html, "__VIEWSTATE")) return null;
+  const body = new URLSearchParams({
+    __LASTFOCUS: "", __EVENTTARGET: "", __EVENTARGUMENT: "", __VIEWSTATE: formField(page.html, "__VIEWSTATE"),
+    __VIEWSTATEGENERATOR: formField(page.html, "__VIEWSTATEGENERATOR"), __EVENTVALIDATION: formField(page.html, "__EVENTVALIDATION"),
+    "ctl00$P1$txt_fideID": fideId, "ctl00$P1$combo_Sort": "0",
+    "ctl00$P1$combo_anzahl_zeilen": "1", "ctl00$P1$cb_suchen": "Search",
+  });
+  const result = await request(source, page.url, jar, { method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: page.url, Origin: new URL(page.url).origin } });
+  return parseSearchResults(result.html).filter(h => h.fideId === fideId);
+}
+
 async function searchPlayer(source: SourceContext): Promise<SearchHit[]> {
   return source.memo("search", SEARCH_TTL, async () => {
-    const jar = new Map<string, string>();
-    const page = await request(source, "https://chess-results.com/spielersuche.aspx?lan=1", jar);
-    const field = (name: string) => {
-      const tag = page.html.match(new RegExp(`<input[^>]*name="${name}"[^>]*>`, "i"))?.[0] || "";
-      return decodeEntities(tag.match(/value="([^"]*)"/)?.[1] || "");
-    };
-    if (!field("__VIEWSTATE")) throw new Error("Meklēšanas lapa nav atpazīta.");
-    const body = new URLSearchParams({
-      __LASTFOCUS: "", __EVENTTARGET: "", __EVENTARGUMENT: "", __VIEWSTATE: field("__VIEWSTATE"),
-      __VIEWSTATEGENERATOR: field("__VIEWSTATEGENERATOR"), __EVENTVALIDATION: field("__EVENTVALIDATION"),
-      "ctl00$P1$txt_fideID": FIDE_ID, "ctl00$P1$combo_Sort": "0",
-      "ctl00$P1$combo_anzahl_zeilen": "1", "ctl00$P1$cb_suchen": "Search",
-    });
-    const result = await request(source, page.url, jar, { method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: page.url, Origin: new URL(page.url).origin } });
-    const hits = parseSearchResults(result.html).filter(h => h.fideId === FIDE_ID);
+    const hits = await searchFide(source, FIDE_ID);
+    if (!hits) throw new Error("Meklēšanas lapa nav atpazīta.");
     if (!hits.length) throw new Error("Spēlētāja meklēšanas rezultāti nav atpazīti; iepriekšējā vēsture saglabāta.");
     const unique = new Map(hits.map(h => [h.id, h]));
     for (const extra of EXTRA_TOURNAMENTS) if (!unique.has(extra.id)) unique.set(extra.id, extra);
@@ -120,23 +72,7 @@ async function searchPlayer(source: SourceContext): Promise<SearchHit[]> {
 }
 
 async function searchByFide(source: SourceContext, fideId: string): Promise<SearchHit[]> {
-  return source.memo(`glance:${fideId}`, HISTORY_TTL, async () => {
-    const jar = new Map<string, string>();
-    const page = await request(source, "https://chess-results.com/spielersuche.aspx?lan=1", jar);
-    const field = (name: string) => {
-      const tag = page.html.match(new RegExp(`<input[^>]*name="${name}"[^>]*>`, "i"))?.[0] || "";
-      return decodeEntities(tag.match(/value="([^"]*)"/)?.[1] || "");
-    };
-    if (!field("__VIEWSTATE")) return [];
-    const body = new URLSearchParams({
-      __LASTFOCUS: "", __EVENTTARGET: "", __EVENTARGUMENT: "", __VIEWSTATE: field("__VIEWSTATE"),
-      __VIEWSTATEGENERATOR: field("__VIEWSTATEGENERATOR"), __EVENTVALIDATION: field("__EVENTVALIDATION"),
-      "ctl00$P1$txt_fideID": fideId, "ctl00$P1$combo_Sort": "0",
-      "ctl00$P1$combo_anzahl_zeilen": "1", "ctl00$P1$cb_suchen": "Search",
-    });
-    const result = await request(source, page.url, jar, { method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: page.url, Origin: new URL(page.url).origin } });
-    return parseSearchResults(result.html).filter((hit) => hit.fideId === fideId).slice(0, 30);
-  });
+  return source.memo(`glance:${fideId}`, HISTORY_TTL, async () => (await searchFide(source, fideId) ?? []).slice(0, 30));
 }
 
 function glanceFrom(fideId: string, hits: SearchHit[]): OpponentGlance {
@@ -160,7 +96,7 @@ function glanceFrom(fideId: string, hits: SearchHit[]): OpponentGlance {
 }
 
 async function withGlance(source: SourceContext, next: NextGame, tournamentId: string): Promise<NextGame> {
-  if (/^(brīvs|bye|spielfrei)$/i.test(next.opponent.trim())) return next;
+  if (isBye(next.opponent)) return next;
   try {
     let fide = next.opponentFideId && next.opponentFideId !== "0" ? next.opponentFideId : "";
     if (!fide && next.opponentSnr) {
@@ -229,12 +165,13 @@ async function participantCount(source: SourceContext, id: string): Promise<numb
 export async function scrapeDossier(source: SourceContext): Promise<Extract<LoadResult, { ok: true }>> {
   const hits = await searchPlayer(source);
   const today = rigaToday();
-  const cards = [], metas = [], nextGames: Array<NextGame | null> = [], standings = [], lastRoundAt: string[] = [];
+  const cards = [], metas = [], nextGames: Array<NextGame | null> = [], standings = [];
   const preparedHits: SearchHit[] = [];
   // Serial source access, shared memo entries: historical pages are never fetched every refresh.
   for (const hit of hits) {
-    const meta = await source.memo(`meta:shown:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)));
-    meta.location ||= EXTRA_PLACE[hit.id] || "";
+    const cached = await source.memo(`meta:shown:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)));
+    // Copy: the memoized value is shared state and must not absorb local fallbacks.
+    const meta = { ...cached, location: cached.location || EXTRA_PLACE[hit.id] || "" };
     if (!hit.fieldSize && !meta.fieldSize) {
       const size = await source.memo(`field:${hit.id}`, HISTORY_TTL, () => participantCount(source, hit.id));
       if (size) meta.fieldSize = size;
@@ -267,16 +204,16 @@ export async function scrapeDossier(source: SourceContext): Promise<Extract<Load
     }
     if (next) next = await withGlance(source, next, hit.id);
     preparedHits.push({ ...hit, endDate });
-    cards.push(card); metas.push(meta); nextGames.push(next); standings.push(neighbors); lastRoundAt.push("");
+    cards.push(card); metas.push(meta); nextGames.push(next); standings.push(neighbors);
   }
   return {
     ok: true, stale: false, warning: null,
-    dossier: buildDossier({ hits: preparedHits, cards, metas, nextGames, standings, lastRoundAt, fetchedAt: new Date().toISOString(), today, fideId: FIDE_ID }),
+    dossier: buildDossier({ hits: preparedHits, cards, metas, nextGames, standings, fetchedAt: new Date().toISOString(), today, fideId: FIDE_ID }),
   };
 }
 
-export async function loadDossier(_refresh = false): Promise<LoadResult> {
-  // Neither manual refresh nor another browser may bypass the shared guard.
+export async function loadDossier(): Promise<LoadResult> {
+  // There is deliberately no "force" option: neither the refresh button nor another browser may bypass the shared guard.
   if (import.meta.env.VITE_CLOUDFLARE === "1") {
     const { env } = await import("cloudflare:workers");
     const namespace = (env as unknown as { CHESS_CACHE: DurableObjectNamespace }).CHESS_CACHE;

@@ -89,7 +89,6 @@ export type Tournament = {
   awaitingPairing: boolean;
   nextGame: NextGame | null;
   standings: Standings | null;
-  lastRoundAt: string;
   games: Game[];
 };
 

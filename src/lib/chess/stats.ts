@@ -1,6 +1,9 @@
 import type { Dossier, Game, Opponent, Tournament } from "./types";
 
-export function paceOf(control: string): "rapid" | "blitz" | "classical" | "unknown" {
+export type Pace = "rapid" | "blitz" | "classical" | "unknown";
+
+/** FIDE: blitz is 10 min or less, rapid more than 10 and less than 60, standard 60 or more (base + 60 moves of increment). */
+export function paceOf(control: string): Pace {
   if (/blitz|blic/i.test(control)) return "blitz";
   if (/rapid|ātr/i.test(control)) return "rapid";
   if (/standard|classical|klasisk/i.test(control)) return "classical";
@@ -9,7 +12,7 @@ export function paceOf(control: string): "rapid" | "blitz" | "classical" | "unkn
   const minutes = Number(match[1]);
   const increment = Number(control.match(/\+\s*(\d+)/)?.[1] || 0);
   const effective = minutes + increment;
-  return effective <= 10 ? "blitz" : effective <= 60 ? "rapid" : "classical";
+  return effective <= 10 ? "blitz" : effective < 60 ? "rapid" : "classical";
 }
 export function scopedDossier(dossier: Dossier, tournaments: Tournament[]): Dossier {
   const ids = new Set(tournaments.map(t => t.id));
