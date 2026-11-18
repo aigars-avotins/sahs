@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACTIVE_TTL, HISTORY_TTL, SEARCH_TTL, REQUEST_GAP, SourceCoordinator, type CacheState, type SourceContext } from "../src/lib/chess/coordinator.server";
+import { ACTIVE_TTL, HISTORY_TTL, POLICY, SEARCH_TTL, REQUEST_GAP, SourceCoordinator, type CacheState, type SourceContext } from "../src/lib/chess/coordinator.server";
 import { dossier } from "./helpers";
 import type { LoadResult } from "../src/lib/chess/types";
 
@@ -98,9 +98,9 @@ test("the first ever load waits even with a short wait budget", async () => {
 });
 test("a snapshot built by older code is rebuilt on the next visit from cached pages", async () => {
   const h = harness(); await h.create().load(h.job);
-  const state = h.state()!; state.policy = 3; h.setState(state);
+  const state = h.state()!; state.policy = POLICY - 1; h.setState(state);
   const before = h.times.length; let rebuilt = 0;
   await h.create().load(async (source) => { rebuilt += 1; return h.job(source); });
   assert.equal(rebuilt, 1, "the old snapshot must be rebuilt");
-  assert.equal(h.state()!.policy, 4); assert.equal(h.times.length, before); // memo entries were still fresh
+  assert.equal(h.state()!.policy, POLICY); assert.equal(h.times.length, before); // memo entries were still fresh
 });

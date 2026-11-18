@@ -13,7 +13,7 @@ export const REQUEST_GAP = 2_000;
  * rebuilt on the next visit. The rebuild reuses cached source pages, so it costs no extra requests
  * for pages that are still fresh.
  */
-export const POLICY = 4;
+export const POLICY = 5;
 
 type Success = Extract<LoadResult, { ok: true }>;
 export type CacheState = {
