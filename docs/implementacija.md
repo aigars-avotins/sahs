@@ -25,7 +25,9 @@ Iepriekšējās savstarpējās partijas netiek meklētas pretinieka profilā. T�
 
 ## Ko UI dara lokāli
 
-Rezultāta cipara kolonna ir fiksēta: aplis 2.75rem un vārds 4.75rem, bloks 8rem, ar nelielu pabīdi pa labi. Mobilajā partiju rindā kreisā atkāpe ir noņemta, lai vārds sakrīt ar pirmo rezultāta lauciņu.
+Partiju rindā rezultāta aplis ir 2.25rem; no `sm` platuma blakus ir vārds, bloks 8rem. Mobilajā rindā kreisā atkāpe ir noņemta, lai vārds sakrīt ar pirmo rezultāta lauciņu.
+
+Kārtas sākuma datums nāk no izlozes lapas teikuma “Round N on YYYY/MM/DD at HH:MM” (`parseRoundDate`), laiks tiek pārrēķināts no Rīgas laika ar `rigaInstant`, un atskaite atjaunojas ik pēc 30 sekundēm. Galvenes josla Aktuālajā ir pārklājums zem galvenes (neietekmē lapas plūsmu), un to parāda `IntersectionObserver`, kad nākamās partijas karte vairs nav redzama. Galvenes sašaurināšanai ir histerēze (64 px / 8 px), lai augstuma maiņa neizraisītu svārstības. Teksts uz zaļajām kartēm izmanto `--color-on-pine`, kas abās tēmās paliek gaišs.
 
 Pretinieku sarakstā tie, kas sastapti vairākas reizes, tiek apvienoti pēc salocīta vārda (`foldName`), nevis pēc FIDE numura, jo iesācējiem tā bieži nav. Gada un tempa filtrs pārrēķina pretiniekus ar `scopedDossier`, tāpēc “N×” skaita tikai nospēlētās partijas arī filtrētā skatā. Lokālās glabātuves piekļuve iet caur `safeStorage`, lai bloķēta glabātuve neapturētu lapu. Zirga poga izsauc lapas pārlādi, kas atgriež Aktuālo.
 

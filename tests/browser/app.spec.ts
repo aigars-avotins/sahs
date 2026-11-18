@@ -17,7 +17,10 @@ for (const width of [375, 768, 1440]) {
       await expect(page.getByRole("heading", { name: "Valters Avotiņš", exact: true })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Rīgas turnīrs", exact: true })).toBeVisible();
       await expect(page.getByText("Nākamā partija")).toBeVisible();
-      await expect(page.getByText(/sākums 12:30/)).toBeVisible();
+      await expect(page.getByText("Sākums", { exact: true })).toBeVisible();
+      await expect(page.getByText("12:30", { exact: true })).toBeVisible();
+      await expect(page.getByRole("main").getByText("pret Roberts Aleksandrs Kalniņš")).toBeVisible();
+      await expect(page.getByText("Nākamā", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Atjaunot", exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: `screenshots/${width}-${dark ? "dark" : "light"}.png`, fullPage: true });

@@ -8,7 +8,7 @@ Spēlētājs: Valters Avotiņš, FIDE 11662255, klubs Rīgas Mats/A.Tihomirovs. 
 
 Četras pārslēdzamas sadaļas: Aktuālais, Turnīri, Pretinieki, Statistika.
 
-Aktuālais rāda pēdējo vai notiekošo turnīru: statusu, nosaukumu, datumu un vietu, punktus un vietu no dalībnieku skaita. Ja izloze ir publicēta, visredzamāk jābūt pretiniekam, kārtai, galdiņam un krāsai. Ja pāra vēl nav, ir gaidīšanas stāvoklis.
+Aktuālais rāda pēdējo vai notiekošo turnīru: statusu, nosaukumu, datumu un vietu, punktus un vietu no dalībnieku skaita. Ja izloze ir publicēta, visredzamāk jābūt galdiņam, krāsai un kārtas sākuma laikam (ar “pēc N min”, ja chess-results dod datumu), tad pretiniekam. Ja pāra vēl nav, ir gaidīšanas stāvoklis. Poga “Paziņot telefonā” ir pašā nākamās partijas vai gaidīšanas kartē. Nākamā partija netiek atkārtota: zaļā josla galvenē Aktuālajā parādās tikai tad, kad nākamās partijas karte ir aizritināta, un turnīra kartē nav teikuma “Nākamā: …”; partiju sarakstā nākamā kārta ir iezīmēta ar “Nākamā”.
 
 Turnīru sarakstā noslēdzies turnīrs ir pelēks. Zaļš statuss ir tikai notiekošam. Datums, kas jau ir nosaukumā, otru reizi netiek rādīts. Turnīra kartē nav “Lapā:” laika un nav performance.
 
@@ -18,7 +18,7 @@ Tempa filtrs izmanto FIDE robežas: zibšahs līdz 10 minūtēm, ātrais šahs v
 
 Ja kārtu skaits nav publicēts, lapa neraksta, ka visas kārtas ir nospēlētas.
 
-Statistikā nav virsrakstu “turnīri, bilance un krāsa” un nav teikuma “Katrs stabiņš ir viens turnīrs.” Punktu īpatsvara grafikam ir fiksēta 0–100% skala.
+Statistikas augšā: liels punktu procents ar vienu kopsavilkuma rindu (turnīri, partijas, punkti, bilance), pēdējās 5 partijas un labākā vieta. Nav virsrakstu “turnīri, bilance un krāsa” un nav teikuma “Katrs stabiņš ir viens turnīrs.” Punktu īpatsvara grafikam ir fiksēta 0–100% skala.
 
 ## Nākamais pretinieks
 
@@ -33,15 +33,19 @@ Bez FIDE numura šis kopsavilkums netiek rādīts. Pretinieka citu turnīru part
 
 ## Partiju rindas
 
-Rezultāta cipars 1, ½ un 0 ir vienā kolonnā un pietiekami pa labi no pretinieka vārda. Vārds “Uzvara”, “Neizšķirts” vai “Zaudējums” ir blakus ciparam.
+Viena partija ir viena kompakta rinda: pretinieks, zem tā kārta, krāsas aplītis, galds un klubs; labajā malā rezultāta aplis 1, ½ vai 0 krāsā (zaļš, pelēks, sarkans). Vārds “Uzvara”, “Neizšķirts” vai “Zaudējums” ir blakus ciparam platākā ekrānā un vienmēr ekrāna lasītājam.
 
-Pretinieka vārds, klubs un kārtas rinda sākas vienā līnijā ar pirmo “Partiju rezultāti” lauciņu.
+“Partiju rezultāti” rāda visas turnīra kārtas: nospēlētās ar rezultātu, nākamo iezīmētu, pārējās tukšas.
+
+Pretinieka vārds, klubs un kārtas rinda telefonā sākas vienā līnijā ar pirmo “Partiju rezultāti” lauciņu.
+
+Nākamās partijas kartē, galvenes joslā un kopsavilkumā vārds ir “Vārds Uzvārds”; sarakstos paliek chess-results secība “Uzvārds, Vārds”.
 
 Punktu gramatika: ½ un 1 ir “punkts”, no 2 ir “punkti”.
 
 ## Galvene
 
-Vārds ir galvenais. FIDE numurs un klubs ir vienā rindā tieši zem vārda. Zirga ikona pārlādē lapu un atver Aktuālo. Tumšā skata poga ir augšējā labajā stūrī un nepārklāj vārdu. “Dati pirms …” ir pie atjaunošanas pogas, nevis atsevišķā rindā lapas augšā. Viena atjaunošana atjauno visas četras sadaļas.
+Vārds ir galvenais. FIDE numurs un klubs ir vienā rindā tieši zem vārda. Zirga ikona pārlādē lapu un atver Aktuālo. Tumšā skata poga ir augšējā labajā stūrī un nepārklāj vārdu. Ja tēma nav izvēlēta, tā seko telefona iestatījumam. Ritinot galvene sašaurinās līdz vārdam un pogām. “Dati pirms …” ir pie atjaunošanas pogas, nevis atsevišķā rindā lapas augšā. Viena atjaunošana atjauno visas četras sadaļas.
 
 Paziņojuma teksts: ja paziņojumi ir ieslēgti, telefons paziņo, kad chess-results publicē nākamo pretinieku. Lapa jātur atvērta. Lapas nosaukums ir “Valtera šaha statistika”.
 

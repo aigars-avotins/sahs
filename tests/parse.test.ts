@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dayStatus, isBye, parsePlayerCard, parseRoundClock, parseRoundPairing, parseTournamentMeta, pendingGameFromCard, rigaToday } from "../src/lib/chess/parse";
+import { dayStatus, isBye, parsePlayerCard, parseRoundClock, parseRoundDate, personName, rigaInstant, parseRoundPairing, parseTournamentMeta, pendingGameFromCard, rigaToday } from "../src/lib/chess/parse";
 import { paceOf, scopedDossier, scoreRate } from "../src/lib/chess/stats";
 import { dossier, fixture } from "./helpers";
 
@@ -65,4 +65,12 @@ test("a year/pace filter keeps opponent game counts to played games only", () =>
 test("bye names are recognized in every source language", () => {
   for (const name of ["brīvs", "bye", " Spielfrei "]) assert.equal(isBye(name), true);
   assert.equal(isBye("Byers, Anna"), false);
+});
+test("round start is read with its date and converted from Riga time", () => {
+  assert.equal(parseRoundDate(fixture("round")), "2026-10-24");
+  assert.equal(rigaInstant("2026-10-24", "12:30"), Date.parse("2026-10-24T09:30:00Z"));
+  assert.equal(rigaInstant("2026-12-24", "12:30"), Date.parse("2026-12-24T10:30:00Z"));
+  assert.equal(rigaInstant("2026-10-24", ""), null);
+  assert.equal(personName("Kalniņš, Roberts Aleksandrs"), "Roberts Aleksandrs Kalniņš");
+  assert.equal(personName("bye"), "bye");
 });

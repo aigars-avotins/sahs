@@ -35,6 +35,8 @@ export type NextGame = {
   opponentPoints: number | null;
   url: string;
   startsAt: string;
+  /** Round date (YYYY-MM-DD) when the pairing page gives it. */
+  startsOn?: string;
   opponentSnr?: string;
   glance?: OpponentGlance | null;
 };

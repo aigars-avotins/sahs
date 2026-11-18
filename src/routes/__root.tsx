@@ -37,7 +37,7 @@ export const Route = createRootRoute({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              'try{if(localStorage.getItem("valters-theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}',
+              'try{var t=localStorage.getItem("valters-theme");if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.dataset.theme="dark"}catch(e){}',
           }}
         />
       </head>

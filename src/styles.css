@@ -13,6 +13,8 @@
   --color-pine-soft: #e7f2ec;
   --color-brass: #1e4a38;
   --color-loss: #8c3a32;
+  /* Secondary text on the green pine panels; must stay light in both themes. */
+  --color-on-pine: #d3e8dd;
   --radius: 0.9rem;
 }
 

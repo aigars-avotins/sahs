@@ -1,7 +1,7 @@
 import {
   buildDossier, countParticipants, decodeEntities, parsePlayerCard, parseRoundClock,
   parseRoundPairing, parseSearchResults, parseStandings, parseTournamentMeta,
-  isBye, pendingGameFromCard, rigaToday, type SearchHit,
+  isBye, parseRoundDate, pendingGameFromCard, rigaToday, type SearchHit,
 } from "./parse";
 import { EXTRA_PLACE, EXTRA_TOURNAMENTS, PLAYER } from "./config";
 import { ACTIVE_TTL, HISTORY_TTL, META_TTL, SEARCH_TTL, SourceError, type SourceContext } from "./coordinator.server";
@@ -195,10 +195,11 @@ export async function scrapeDossier(source: SourceContext): Promise<Extract<Load
         const parsed = await source.memo(`round:${hit.id}:${round}`, ACTIVE_TTL, async () => {
           const html = (await request(source, url)).html;
           if (!/<title>[\s\S]*Chess-Results/i.test(html) && !/class=["']CR/i.test(html)) throw new Error("Izlozes lapa nav atpazīta.");
-          return { seat: parseRoundPairing(html, hit.snr, round, url), startsAt: parseRoundClock(html) };
+          return { seat: parseRoundPairing(html, hit.snr, round, url), startsAt: parseRoundClock(html), startsOn: parseRoundDate(html) };
         });
-        if (parsed.seat?.pending) next = { ...parsed.seat, startsAt: parsed.startsAt };
-        else if (next) next = { ...next, url, startsAt: parsed.startsAt };
+        const when = { startsAt: parsed.startsAt, startsOn: parsed.startsOn || undefined };
+        if (parsed.seat?.pending) next = { ...parsed.seat, ...when };
+        else if (next) next = { ...next, url, ...when };
       }
       neighbors = await source.memo(`standings:${hit.id}`, 15 * 60_000, async () => parseStandings((await request(source, `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=1`)).html, card.name, hit.snr));
     }

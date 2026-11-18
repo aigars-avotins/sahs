@@ -464,8 +464,41 @@ export function isBye(name: string): boolean {
 }
 
 export function parseRoundClock(html: string): string {
+  return roundSchedule(html)?.[2] ?? "";
+}
+
+/** Round date as YYYY-MM-DD, or "" when the page does not give it. */
+export function parseRoundDate(html: string): string {
+  return isoDate(roundSchedule(html)?.[1] ?? "");
+}
+
+function roundSchedule(html: string): RegExpMatchArray | null {
   const flat = cleanText(html.replace(/<script[\s\S]*?<\/script>/gi, " "));
-  return flat.match(/Round\s+\d+\s+on\s+[\d/]+\s+at\s+(\d{1,2}:\d{2})/i)?.[1] ?? "";
+  return flat.match(/Round\s+\d+\s+on\s+([\d/]+)\s+at\s+(\d{1,2}:\d{2})/i);
+}
+
+/** Epoch ms of a Riga wall-clock time, independent of the device timezone. */
+export function rigaInstant(day: string, clock: string): number | null {
+  const d = day.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const t = clock.match(/^(\d{1,2}):(\d{2})$/);
+  if (!d || !t) return null;
+  const wall = Date.UTC(+d[1], +d[2] - 1, +d[3], +t[1], +t[2]);
+  const format = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Riga", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+  const offset = (at: number) => {
+    const part = (type: string) => Number(format.formatToParts(new Date(at)).find((p) => p.type === type)?.value);
+    return Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute")) - at;
+  };
+  // Second pass settles the offset on DST change days.
+  return wall - offset(wall - offset(wall));
+}
+
+/** "Kalniņš, Roberts" → "Roberts Kalniņš"; names without a comma stay as they are. */
+export function personName(name: string): string {
+  const [surname, ...given] = name.split(",");
+  const first = given.join(",").trim();
+  return first ? `${first} ${surname.trim()}` : name.trim();
 }
 
 /** Lowercases and strips Latvian diacritics; opponent name matching depends on exactly this. */

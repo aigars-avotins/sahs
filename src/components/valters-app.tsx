@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
-  BellOff,
+  BellRing,
   ChevronDown,
   ExternalLink,
   MapPin,
@@ -34,10 +34,12 @@ import {
   formatStamp,
   isBye,
   isoDate,
+  personName,
+  rigaInstant,
 } from "@/lib/chess/parse";
-import { paceOf, scopedDossier } from "@/lib/chess/stats";
+import { paceOf, scopedDossier, scoreRate } from "@/lib/chess/stats";
 import { safeStorage } from "@/lib/storage";
-import type { Dossier, Game, GameResult, LoadResult, Opponent, OpponentGlance, PieceColor, Tournament } from "@/lib/chess/types";
+import type { Dossier, Game, GameResult, LoadResult, NextGame, Opponent, OpponentGlance, PieceColor, Tournament } from "@/lib/chess/types";
 
 const DISPLAY_NAME = PLAYER.displayName;
 
@@ -246,6 +248,8 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
 
   const alerts = usePairingAlerts(result.ok ? result.dossier : null, refreshQuiet);
   const [tab, setTab] = useState<PageTab>("now");
+  // Assume the next-game card is on screen at load; its observer corrects this right away.
+  const [bannerInView, setBannerInView] = useState(true);
   if (!result.ok) {
     return (
       <Shell>
@@ -269,7 +273,15 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
 
   return (
     <Shell>
-      <TopBar dossier={result.dossier} loading={loading} onRefresh={refresh} tab={tab} onTab={setTab} />
+      <TopBar
+        dossier={result.dossier}
+        loading={loading}
+        onRefresh={refresh}
+        tab={tab}
+        onTab={setTab}
+        dockFloating={tab === "now"}
+        dockHidden={bannerInView}
+      />
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         {result.warning ? (
           <p className="mb-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-brass">
@@ -281,7 +293,7 @@ export function ValtersApp({ initial }: { initial: LoadResult }) {
             {result.dossier.partialNote}
           </p>
         ) : null}
-        {tab === "now" ? <CurrentView dossier={result.dossier} alerts={alerts} /> : null}
+        {tab === "now" ? <CurrentView dossier={result.dossier} alerts={alerts} onBannerVisible={setBannerInView} /> : null}
         {tab === "all" ? <Board dossier={result.dossier} part="tournaments" /> : null}
         {tab === "opponents" ? <Board dossier={result.dossier} part="opponents" /> : null}
         {tab === "stats" ? <StatsView dossier={result.dossier} /> : null}
@@ -316,27 +328,44 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function useNow(stepMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), stepMs);
+    return () => window.clearInterval(id);
+  }, [stepMs]);
+  return now;
+}
+
 function TopBar({
   dossier,
   loading,
   onRefresh,
   tab,
   onTab,
+  dockFloating,
+  dockHidden,
 }: {
   dossier: Dossier;
   loading: boolean;
   onRefresh: () => void;
   tab: PageTab;
   onTab: (tab: PageTab) => void;
+  /** On Aktuālais the dock overlays the page and appears only once the next-game card scrolls away. */
+  dockFloating: boolean;
+  dockHidden: boolean;
 }) {
   const [dark, setDark] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [compact, setCompact] = useState(false);
+  const now = useNow();
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
-    // Keep "pirms N min" honest while the page stays open.
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(id);
+    // Hysteresis: shrinking the header moves the page, which must not flip it back.
+    const onScroll = () => setCompact((current) => (current ? window.scrollY > 8 : window.scrollY > 64));
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
   function toggleTheme() {
     const next = document.documentElement.dataset.theme === "dark" ? "" : "dark";
@@ -348,27 +377,42 @@ function TopBar({
   const live = dossier.tournaments.find((tournament) => tournament.nextGame);
   const fresh = freshnessLabel(dossier.fetchedAt, now);
   const stamped = formatStamp(dossier.fetchedAt);
+  const dockAway = dockFloating && dockHidden;
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/95">
-      <div className="mx-auto max-w-6xl px-4 pt-2 pb-3 sm:px-6">
-        <div className="grid h-11 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto] items-stretch gap-x-3 sm:h-14">
+      <div className={"mx-auto max-w-6xl px-4 sm:px-6 " + (compact ? "py-2" : "pt-2 pb-3")}>
+        <div
+          className={
+            "grid grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-x-3 " +
+            (compact ? "h-9 grid-rows-1" : "h-11 grid-rows-[minmax(0,1fr)_auto] sm:h-14")
+          }
+        >
           <button
             type="button"
             onClick={() => window.location.reload()}
             aria-label="Pārlādēt un atvērt aktuālo turnīru"
-            className="row-span-2 inline-flex size-11 shrink-0 items-center justify-center self-center rounded-lg bg-pine sm:size-14"
+            className={
+              "inline-flex shrink-0 items-center justify-center self-center rounded-lg bg-pine " +
+              (compact ? "size-9" : "row-span-2 size-11 sm:size-14")
+            }
           >
-            <Knight tone="white" className="size-10 p-0.5 sm:size-12" />
+            <Knight tone="white" className={compact ? "size-8 p-0.5" : "size-10 p-0.5 sm:size-12"} />
           </button>
-          <h1 className="min-w-0 self-start truncate text-2xl leading-none sm:text-3xl">{DISPLAY_NAME}</h1>
-          <div className="flex w-full shrink-0 items-start justify-end gap-2 self-start">
+          <h1
+            className={
+              "min-w-0 truncate leading-none " + (compact ? "self-center text-xl" : "self-start text-2xl sm:text-3xl")
+            }
+          >
+            {DISPLAY_NAME}
+          </h1>
+          <div className={"flex w-full shrink-0 justify-end gap-2 " + (compact ? "items-center self-center" : "items-start self-start")}>
             <button
               type="button"
               onClick={onRefresh}
               disabled={loading}
               aria-busy={loading}
               aria-label={loading ? "Atjauno" : "Atjaunot"}
-              className="inline-flex h-7 items-center gap-2 rounded-full bg-pine px-2.5 text-sm font-medium text-white disabled:opacity-60 sm:h-8 sm:px-4"
+              className="inline-flex h-8 items-center gap-2 rounded-full bg-pine px-2.5 text-sm font-medium text-white disabled:opacity-60 sm:px-4"
             >
               <RefreshCw className={loading ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} />
               <span className="hidden sm:inline">{loading ? "Atjauno…" : "Atjaunot"}</span>
@@ -378,25 +422,41 @@ function TopBar({
               onClick={toggleTheme}
               aria-pressed={dark}
               aria-label={dark ? "Gaišā tēma" : "Tumšā tēma"}
-              className="inline-flex size-7 items-center justify-center rounded-full border border-line bg-surface sm:size-8"
+              className="inline-flex size-8 items-center justify-center rounded-full border border-line bg-surface"
             >
               {dark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
             </button>
           </div>
-          <p className="min-w-0 self-end truncate text-[13px] leading-none text-muted sm:text-sm">
-            FIDE {dossier.player.fideId}
-            {dossier.player.club ? ` · ${dossier.player.club}` : ""}
-          </p>
-          <p
-            className="self-end whitespace-nowrap text-right text-[11px] leading-none text-muted sm:text-xs"
-            suppressHydrationWarning
-            title={stamped ? `Atjaunots ${stamped}` : undefined}
-          >
-            {loading ? "Notiek" : `Atjaunots ${fresh}`}
-          </p>
+          {compact ? null : (
+            <>
+              <p className="min-w-0 self-end truncate text-[13px] leading-none text-muted sm:text-sm">
+                FIDE {dossier.player.fideId}
+                {dossier.player.club ? ` · ${dossier.player.club}` : ""}
+              </p>
+              <p
+                className="self-end whitespace-nowrap text-right text-xs leading-none text-muted"
+                suppressHydrationWarning
+                title={stamped ? `Atjaunots ${stamped}` : undefined}
+              >
+                {loading ? "Notiek" : `Atjaunots ${fresh}`}
+              </p>
+            </>
+          )}
         </div>
       </div>
-      {live ? <LiveDock dossier={dossier} tournament={live} /> : null}
+      {live ? (
+        <div
+          className={
+            dockFloating
+              ? "absolute inset-x-0 top-full transition-opacity motion-reduce:transition-none " +
+                (dockAway ? "pointer-events-none opacity-0" : "opacity-100")
+              : ""
+          }
+          inert={dockAway}
+        >
+          <LiveDock dossier={dossier} tournament={live} />
+        </div>
+      ) : null}
       <nav aria-label="Sadaļas" className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 sm:px-4">
         {PAGE_TABS.map((item) => (
           <button
@@ -417,23 +477,35 @@ function TopBar({
   );
 }
 
-function Overview({ alerts, dossier }: { alerts: AlertState; dossier: Dossier }) {
+function AlertButton({ alerts, onPine = false }: { alerts: AlertState; onPine?: boolean }) {
+  const look = onPine
+    ? alerts.enabled
+      ? "border border-white/40 text-white"
+      : "bg-white text-pine"
+    : alerts.enabled
+      ? "border border-pine bg-white text-pine"
+      : "border border-line bg-surface";
   return (
-    <section className="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div className="grid justify-items-start gap-1">
       <button
         type="button"
         onClick={() => void alerts.toggle()}
         aria-pressed={alerts.enabled}
-        className={
-          "inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-medium " +
-          (alerts.enabled ? "border border-pine bg-white text-pine" : "border border-line bg-surface")
-        }
+        className={"inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-medium " + look}
       >
-        {alerts.enabled ? <BellOff className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
+        {alerts.enabled ? <BellRing className="size-4" aria-hidden /> : <Bell className="size-4" aria-hidden />}
         {alerts.enabled ? "Paziņojumi ieslēgti" : "Paziņot telefonā"}
       </button>
+      {alerts.note ? <p className={"text-sm " + (onPine ? "text-on-pine" : "text-muted")}>{alerts.note}</p> : null}
+    </div>
+  );
+}
+
+function Overview({ alerts, dossier, withAlerts }: { alerts: AlertState; dossier: Dossier; withAlerts: boolean }) {
+  return (
+    <section className="flex flex-wrap items-start gap-x-3 gap-y-2">
+      {withAlerts ? <AlertButton alerts={alerts} /> : null}
       <CopySummary dossier={dossier} />
-      {alerts.note ? <p className="w-full text-sm text-muted">{alerts.note}</p> : null}
       <details className="w-full">
         <summary className="cursor-pointer text-sm text-muted">Kā darbojas paziņojumi</summary>
         <p className="mt-1 max-w-xl text-sm text-muted">
@@ -444,12 +516,20 @@ function Overview({ alerts, dossier }: { alerts: AlertState; dossier: Dossier })
   );
 }
 
-function CurrentView({ dossier, alerts }: { dossier: Dossier; alerts: AlertState }) {
+function CurrentView({
+  dossier,
+  alerts,
+  onBannerVisible,
+}: {
+  dossier: Dossier;
+  alerts: AlertState;
+  onBannerVisible: (visible: boolean) => void;
+}) {
   const live = liveTournaments(dossier);
   const shown = live.length > 0 ? live : dossier.tournaments.slice(0, 1);
   return (
     <div className="grid gap-4">
-      <NextGames dossier={dossier} />
+      <NextGames dossier={dossier} alerts={alerts} onBannerVisible={onBannerVisible} />
       {shown.length === 0 ? (
         <Empty>Turnīru vēl nav.</Empty>
       ) : (
@@ -465,38 +545,307 @@ function CurrentView({ dossier, alerts }: { dossier: Dossier; alerts: AlertState
           />
         ))
       )}
-      <Overview alerts={alerts} dossier={dossier} />
+      {/* The alert switch lives on the live cards; repeat it here only when there are none. */}
+      <Overview alerts={alerts} dossier={dossier} withAlerts={live.length === 0} />
     </div>
   );
 }
 
+function NextGames({
+  dossier,
+  alerts,
+  onBannerVisible,
+}: {
+  dossier: Dossier;
+  alerts: AlertState;
+  onBannerVisible: (visible: boolean) => void;
+}) {
+  const cards = liveTournaments(dossier);
+  // The header dock mirrors the first tournament with a pairing, so only its card reports visibility.
+  const docked = dossier.tournaments.find((tournament) => tournament.nextGame)?.id;
+  if (cards.length === 0) return null;
+  return (
+    <div className="grid gap-3">
+      {cards.map((tournament) =>
+        tournament.nextGame ? (
+          <NextGameBanner
+            key={tournament.id}
+            dossier={dossier}
+            tournament={tournament}
+            alerts={alerts}
+            onVisible={tournament.id === docked ? onBannerVisible : undefined}
+          />
+        ) : (
+          <LiveStatus key={tournament.id} tournament={tournament} alerts={alerts} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function countdownLabel(next: NextGame, now: number): string {
+  if (!next.startsOn || !next.startsAt) return "";
+  const start = rigaInstant(next.startsOn, next.startsAt);
+  if (start == null) return "";
+  const minutes = Math.ceil((start - now) / 60_000);
+  if (minutes <= 0) return minutes > -300 ? "sākusies" : "";
+  if (minutes < 60) return `pēc ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours < 24) return `pēc ${hours} h${rest ? ` ${rest} min` : ""}`;
+  return `pēc ${Math.floor(hours / 24)} d`;
+}
+
+function Fact({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-sm text-on-pine">{label}</dt>
+      <dd className="mt-1 flex h-14 items-end font-display leading-none tabular-nums">{children}</dd>
+      {note ? (
+        <dd className="mt-1 text-sm font-medium" suppressHydrationWarning>
+          {note}
+        </dd>
+      ) : null}
+    </div>
+  );
+}
+
+function ColorSquare({ color, className = "" }: { color: PieceColor; className?: string }) {
+  if (color === "unknown") return null;
+  return (
+    <span className={`grid size-9 shrink-0 place-items-center rounded-md bg-piece ${className}`}>
+      <Knight tone={color === "white" ? "white" : "black"} className="size-8" />
+    </span>
+  );
+}
+
+function NextGameBanner({
+  dossier,
+  tournament,
+  alerts,
+  onVisible,
+}: {
+  dossier: Dossier;
+  tournament: Tournament;
+  alerts: AlertState;
+  onVisible?: (visible: boolean) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  const now = useNow();
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !onVisible || typeof IntersectionObserver === "undefined") return;
+    // The sticky header covers the top ~120px, so the card counts as visible only below it.
+    const observer = new IntersectionObserver(([entry]) => onVisible(entry.isIntersecting), {
+      rootMargin: "-120px 0px 0px 0px",
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      onVisible(false);
+    };
+  }, [onVisible]);
+  const next = tournament.nextGame;
+  if (!next) return null;
+  const bye = isBye(next.opponent);
+  const played = priorGames(dossier, next.opponent);
+  const last = latestMeeting(played);
+  const otherDay = next.startsOn && next.startsOn !== dossier.today ? formatDate(next.startsOn).slice(0, 6) : "";
+  return (
+    <section ref={ref} className="overflow-hidden rounded-2xl bg-pine text-white">
+      <div className="grid sm:grid-cols-[8.5rem_1fr]">
+        <div className="hidden place-items-center bg-white px-4 py-5 sm:grid">
+          <MiniBoard color={next.color} />
+        </div>
+        <div className="px-5 py-5 sm:px-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-sm font-medium tracking-wide uppercase">Nākamā partija</p>
+            <p className="text-sm tabular-nums">{next.round}. kārta</p>
+          </div>
+          <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-4">
+            <Fact label="Galdiņš">
+              <span className="text-6xl">{next.board > 0 ? next.board : "—"}</span>
+            </Fact>
+            <Fact label="Krāsa">
+              <span className="inline-flex items-center gap-2">
+                <ColorSquare color={next.color} className="sm:hidden" />
+                <span className={next.color === "unknown" ? "text-xl" : "text-3xl"}>
+                  {next.color === "unknown" ? "vēl nav zināma" : colorName(next.color)}
+                </span>
+              </span>
+            </Fact>
+            {next.startsAt ? (
+              <Fact label="Sākums" note={countdownLabel(next, now)}>
+                <span className="text-4xl">
+                  {otherDay ? <span className="mr-2 text-2xl">{otherDay}</span> : null}
+                  {next.startsAt}
+                </span>
+              </Fact>
+            ) : null}
+          </dl>
+          <p className="mt-5 text-xl">
+            {bye ? "Brīva kārta" : `pret ${personName(next.opponent)}${next.opponentTitle ? `, ${next.opponentTitle}` : ""}`}
+          </p>
+          {bye ? null : (
+            <>
+              <p className="mt-1 text-sm text-on-pine">
+                {historyLine(played)}
+                {next.opponentFed ? ` · ${next.opponentFed}` : ""}
+              </p>
+              {last ? (
+                <p className="mt-1 text-sm text-on-pine">
+                  Pēdējo reizi {formatDate(last.tournamentDate)}: {resultWord(last.result)},{" "}
+                  {colorName(last.color).toLocaleLowerCase("lv")}
+                  {last.tournamentName ? ` · ${last.tournamentName}` : ""}
+                </p>
+              ) : null}
+              {next.glance ? <Glance glance={next.glance} /> : null}
+            </>
+          )}
+          <p className="mt-1 text-sm text-on-pine">{placeLine(tournament)}</p>
+          <Neighbors tournament={tournament} light />
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <AlertButton alerts={alerts} onPine />
+            <a href={next.url} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center gap-2 text-sm font-medium text-white">
+              Izloze chess-results
+              <ExternalLink className="size-4" aria-hidden />
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LiveStatus({ tournament, alerts }: { tournament: Tournament; alerts: AlertState }) {
+  const played = new Set(tournament.games.filter((game) => game.score != null).map((game) => game.round)).size;
+  const last = [...tournament.games].sort((a, b) => b.round - a.round)[0];
+  const waiting = tournament.awaitingPairing;
+  // Without a published round count we cannot claim the tournament is over.
+  const finished = tournament.roundsScheduled != null && played >= tournament.roundsScheduled;
+  return (
+    <section className="rounded-2xl border border-line bg-surface px-5 py-4">
+      <p className="text-sm font-medium tracking-wide text-pine uppercase">
+        {waiting ? "Gaidām izlozi" : "Šodienas turnīrs"}
+      </p>
+      <p className="mt-2 text-lg">
+        {waiting
+          ? `Nākamā kārta vēl nav chess-results. Nospēlētas ${played}${tournament.roundsScheduled ? ` no ${tournament.roundsScheduled}` : ""} kārtām.`
+          : finished
+            ? `Visas ${tournament.roundsScheduled} kārtas ir nospēlētas. Nākamajā turnīrā te parādīsies galdiņš un krāsa.`
+            : `${playedRounds(played)}${tournament.roundsScheduled ? ` no ${tournament.roundsScheduled}` : ". Kārtu skaits chess-results nav publicēts"}. Nākamā izloze parādīsies pēc atjaunošanas.`}
+      </p>
+      {last ? (
+        <p className="mt-2 text-sm text-muted">
+          Pēdējā: {last.round}. kārta
+          {last.board > 0 ? `, ${last.board}. galds` : ""}, {colorName(last.color).toLocaleLowerCase("lv")}, pret{" "}
+          {personName(last.opponent)}.
+        </p>
+      ) : null}
+      <Neighbors tournament={tournament} />
+      {finished ? null : (
+        <div className="mt-3">
+          <AlertButton alerts={alerts} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function playedRounds(count: number): string {
+  return count % 10 === 1 && count % 100 !== 11 ? `Nospēlēta ${count} kārta` : `Nospēlētas ${count} kārtas`;
+}
+
+function RoundNote({ dossier, tournament, featured }: { dossier: Dossier; tournament: Tournament; featured: boolean }) {
+  const next = tournament.nextGame;
+  // On Aktuālais the next-game card already says all of this.
+  if (next && featured) return null;
+  if (next) {
+    const played = priorGames(dossier, next.opponent);
+    const bye = isBye(next.opponent);
+    return (
+      <p className="mb-3 text-sm">
+        Nākamā: {next.round}. kārta, {next.board > 0 ? `${next.board}. galds` : "galds vēl nav zināms"},{" "}
+        {colorName(next.color).toLocaleLowerCase("lv")}
+        {bye ? ", brīva kārta" : ` pret ${personName(next.opponent)}`}.
+        {bye ? "" : ` ${historyLine(played)}.`}
+        {next.startsAt ? ` Sākums ${next.startsAt}.` : ""}
+      </p>
+    );
+  }
+  if (tournament.awaitingPairing) {
+    return <p className="mb-3 text-sm text-brass">Nākamā izloze vēl nav publicēta. Spied «Atjaunot».</p>;
+  }
+  return null;
+}
+
 function StatsView({ dossier }: { dossier: Dossier }) {
   const { totals } = dossier;
-  const stats = [
-    { label: "Turnīri", value: String(totals.tournaments), hint: "" },
-    { label: "Partijas", value: String(totals.games), hint: "" },
-    { label: "Punkti", value: formatPoints(totals.score), hint: "" },
-    {
-      label: "Bilance",
-      value: `${totals.wins}–${totals.draws}–${totals.losses}`,
-      hint: "Uzvaras / neizšķirti / zaudējumi",
-    },
-  ];
+  const games = useMemo(() => timeline(dossier), [dossier]);
+  const rate = scoreRate(games);
+  const recent = games.filter((game) => game.score != null).slice(-5);
+  const best = bestTournament(dossier.tournaments);
+  const summary = [
+    tournamentCountLabel(totals.tournaments),
+    `${totals.games} ${totals.games % 10 === 1 && totals.games % 100 !== 11 ? "partija" : "partijas"}`,
+    pointsLabel(totals.score),
+    `${totals.wins}–${totals.draws}–${totals.losses}`,
+  ].join(" · ");
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="rounded-2xl border border-line bg-white px-4 py-4">
-            <p className="text-sm text-muted">{stat.label}</p>
-            <p className="mt-1 font-display text-3xl text-pine tabular-nums">{stat.value}</p>
-            {stat.hint ? <p className="mt-1 text-xs text-muted">{stat.hint}</p> : null}
-          </div>
-        ))}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-2xl border border-line bg-white px-5 py-4">
+          <p className="text-sm text-muted">Punkti no iespējamajiem</p>
+          <p className="mt-1 font-display text-6xl leading-none text-pine tabular-nums">{rate == null ? "—" : `${rate}%`}</p>
+          <p className="mt-3 text-sm">{summary}</p>
+          <p className="mt-1 text-xs text-muted">Bilance: uzvaras–neizšķirti–zaudējumi</p>
+        </div>
+        <div className="rounded-2xl border border-line bg-white px-5 py-4">
+          <p className="text-sm text-muted">Pēdējās {recent.length || 5} partijas</p>
+          {recent.length ? (
+            <ol className="mt-3 flex gap-1.5">
+              {recent.map((game) => (
+                <li key={`${game.tournamentId}-${game.round}`} title={`${game.tournamentName}, ${game.round}. kārta: ${game.opponent}`}>
+                  <ResultMark result={game.result} />
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-3 text-sm text-muted">Vēl nav partiju ar rezultātu.</p>
+          )}
+          <p className="mt-2 text-xs text-muted">Jaunākā ir labajā pusē.</p>
+        </div>
+        <div className="rounded-2xl border border-line bg-white px-5 py-4">
+          <p className="text-sm text-muted">Labākais rezultāts</p>
+          {best ? (
+            <>
+              <p className="mt-1 font-display text-4xl leading-none text-pine tabular-nums">
+                {best.rank}. vieta
+                {best.fieldSize ? <span className="font-sans text-base text-muted"> no {best.fieldSize}</span> : null}
+              </p>
+              <p className="mt-2 text-sm">{displayTournamentName(best.name, best.endDate)}</p>
+              {best.endDate ? <p className="text-sm text-muted tabular-nums">{formatDate(best.endDate)}</p> : null}
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-muted">Vietas vēl nav publicētas.</p>
+          )}
+        </div>
       </div>
-      {totals.bestRank ? <p className="text-lg">Labākā vieta — {totals.bestRank}.</p> : null}
       <Charts dossier={dossier} />
     </div>
   );
+}
+
+/** Best place; ties go to the larger field, then the more recent tournament. */
+function bestTournament(tournaments: Tournament[]): Tournament | null {
+  const placed = tournaments.filter((tournament) => tournament.rank != null && tournament.rank > 0);
+  placed.sort(
+    (a, b) =>
+      (a.rank ?? 0) - (b.rank ?? 0) ||
+      (b.fieldSize ?? 0) - (a.fieldSize ?? 0) ||
+      (a.endDate < b.endDate ? 1 : a.endDate > b.endDate ? -1 : 0),
+  );
+  return placed[0] ?? null;
 }
 
 function matchesQuery(haystack: string, query: string): boolean {
@@ -767,7 +1116,8 @@ function TournamentCard({
           className="flex cursor-pointer list-none flex-col gap-3 rounded-2xl px-4 py-4 hover:bg-bg-deep sm:flex-row sm:items-center sm:px-5"
         >
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-start gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
               {label ? (
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(label)}`}>{label}</span>
               ) : null}
@@ -780,8 +1130,12 @@ function TournamentCard({
                   {tournament.rank}. vieta
                 </span>
               ) : null}
-              <h3 className={featured ? "text-2xl" : "text-xl"}>{displayTournamentName(tournament.name, tournament.endDate)}</h3>
+              </div>
+              <ChevronDown className="ml-auto size-5 shrink-0 text-muted transition-transform group-open:rotate-180 sm:hidden" aria-hidden />
             </div>
+            <h3 className={(featured ? "text-2xl" : "text-xl") + (label || sport || medal ? " mt-2" : "")}>
+              {displayTournamentName(tournament.name, tournament.endDate)}
+            </h3>
             <p className="mt-1 text-sm text-muted">
               {tournament.endDate ? <span className="tabular-nums">{formatDate(tournament.endDate)}</span> : null}
               {tournament.location ? (
@@ -820,7 +1174,7 @@ function TournamentCard({
               </dd>
             </div>
           </dl>
-          <ChevronDown className="size-5 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
+          <ChevronDown className="hidden size-5 shrink-0 text-muted transition-transform group-open:rotate-180 sm:block" aria-hidden />
         </summary>
         <div className="border-t border-line px-4 py-3 sm:px-5">
           <MetaLine tournament={tournament} />
@@ -829,9 +1183,9 @@ function TournamentCard({
             <p className="text-sm text-brass">Partiju sarakstu šoreiz neizdevās nolasīt.</p>
           ) : (
             <>
-              <RoundNote dossier={dossier} tournament={tournament} />
-              <RoundLine games={games} />
-              <GameTable games={games} />
+              <RoundNote dossier={dossier} tournament={tournament} featured={featured} />
+              <RoundLine games={tournament.games} scheduled={tournament.roundsScheduled} nextRound={tournament.nextGame?.round} />
+              <GameTable games={games} nextRound={tournament.nextGame?.round} />
             </>
           )}
           <a
@@ -849,51 +1203,55 @@ function TournamentCard({
   );
 }
 
-function GameTable({ games }: { games: Game[] }) {
+function ColorDot({ color }: { color: PieceColor }) {
+  if (color === "unknown") return null;
+  return (
+    <span
+      aria-hidden
+      className={
+        "inline-block size-2.5 shrink-0 rounded-full ring-1 ring-[#5c6b63] " + (color === "white" ? "bg-[#f7f4ee]" : "bg-[#14241c]")
+      }
+    />
+  );
+}
+
+function GameTable({ games, nextRound }: { games: Game[]; nextRound?: number }) {
   if (games.length === 0) return <p className="text-sm text-muted">Partijas vēl nav publicētas.</p>;
   return (
-    <div>
-      <div className="mb-2 hidden grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_8rem] gap-3 px-3 text-xs font-medium text-muted sm:grid">
-        <span>Kārta</span>
-        <span>Pretinieks</span>
-        <span>Krāsa</span>
-        <span>Galds</span>
-        <span>Rezultāts</span>
-      </div>
-      <ol className="grid gap-2">
-        {games.map((game) => (
-          <li key={`${game.tournamentId}-${game.round}-${game.opponent}`} className="rounded-xl bg-bg py-3 pr-3 pl-0 sm:px-3">
-            <div className="flex items-start justify-between gap-4 sm:hidden">
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{game.opponent}</span>
-                {game.opponentClub ? <span className="block truncate text-sm text-muted">{game.opponentClub}</span> : null}
+    <ol className="grid max-w-3xl gap-1.5">
+      {games.map((game) => {
+        const upcoming = game.score == null && game.round === nextRound;
+        const details = [
+          colorName(game.color).toLocaleLowerCase("lv"),
+          game.board > 0 ? `${game.board}. galds` : "",
+          game.opponentClub,
+        ].filter(Boolean);
+        return (
+          <li
+            key={`${game.tournamentId}-${game.round}-${game.opponent}`}
+            className={
+              "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl py-2.5 pr-3 pl-0 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:px-3 " +
+              (upcoming ? "bg-pine-soft" : "bg-bg")
+            }
+          >
+            <span className="hidden text-sm text-muted tabular-nums sm:block">{game.round}.</span>
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{game.opponent}</span>
+              <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted">
+                <span className="shrink-0 sm:hidden">{game.round}. kārta ·</span>
+                <ColorDot color={game.color} />
+                <span className="truncate">{details.join(" · ")}</span>
               </span>
+            </span>
+            {upcoming ? (
+              <span className="rounded-full bg-pine px-3 py-1 text-xs font-medium text-white">Nākamā</span>
+            ) : (
               <ResultMark result={game.result} labeled />
-            </div>
-            <p className="mt-1 flex items-center gap-2 text-sm text-muted sm:hidden">
-              <PieceMark color={game.color} />
-              <span>
-                {game.round}. kārta · {colorName(game.color).toLocaleLowerCase("lv")}
-                {game.board > 0 ? ` · ${game.board}. galds` : ""}
-              </span>
-            </p>
-            <div className="hidden items-center gap-3 sm:grid sm:grid-cols-[3rem_minmax(0,1fr)_6rem_4.5rem_8rem]">
-              <span className="text-sm text-muted tabular-nums">{game.round}.</span>
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{game.opponent}</span>
-                {game.opponentClub ? <span className="block truncate text-sm text-muted">{game.opponentClub}</span> : null}
-              </span>
-              <span className="inline-flex items-center gap-2 text-sm">
-                <PieceMark color={game.color} />
-                <span className="sr-only">{colorName(game.color)}</span>
-              </span>
-              <span className="text-sm tabular-nums">{game.board > 0 ? game.board : "—"}</span>
-              <ResultMark result={game.result} labeled />
-            </div>
+            )}
           </li>
-        ))}
-      </ol>
-    </div>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -997,53 +1355,38 @@ function PieceMark({ color }: { color: PieceColor }) {
 
 function ResultMark({ result, labeled = false }: { result: GameResult; labeled?: boolean }) {
   const view = {
-    win: { label: "1", name: "Uzvara", cls: "bg-pine-soft text-pine" },
+    win: { label: "1", name: "Uzvara", cls: "bg-pine text-white" },
     draw: { label: "½", name: "Neizšķirts", cls: "bg-bg-deep text-ink" },
-    loss: { label: "0", name: "Zaudējums", cls: "bg-bg-deep text-loss" },
-    unknown: { label: "–", name: "Nav rezultāta", cls: "bg-bg-deep text-muted" },
+    loss: { label: "0", name: "Zaudējums", cls: "bg-loss/15 text-loss" },
+    unknown: { label: "–", name: "Nav rezultāta", cls: "border border-dashed border-line text-muted" },
   }[result];
   const mark = (
     <span
       title={view.name}
-      aria-hidden={labeled}
-      className={`grid size-11 place-items-center rounded-full text-sm font-medium tabular-nums ${view.cls}`}
+      aria-hidden
+      className={`grid size-9 shrink-0 place-items-center rounded-full text-sm font-medium tabular-nums ${view.cls}`}
     >
       {view.label}
     </span>
   );
   if (!labeled) {
     return (
-      <span aria-label={view.name} className="inline-flex">
+      <span role="img" aria-label={view.name} className="inline-flex">
         {mark}
       </span>
     );
   }
+  // The colour carries the result; the word is spelled out where there is room and always for screen readers.
   return (
-    <span className="-mr-2 grid w-[8rem] shrink-0 grid-cols-[2.75rem_4.75rem] items-center gap-1" aria-label={`${view.label}, ${view.name}`}>
+    <span role="img" className="inline-flex items-center gap-2 sm:w-[8rem]" aria-label={`${view.label}, ${view.name}`}>
       {mark}
-      <span className="whitespace-nowrap text-[13px] leading-none">{view.name}</span>
+      <span className="hidden whitespace-nowrap text-sm text-muted sm:inline">{view.name}</span>
     </span>
   );
 }
 
 function liveTournaments(dossier: Dossier): Tournament[] {
   return dossier.tournaments.filter((tournament) => dayStatus(tournament.endDate, dossier.today) === "today" || tournament.nextGame || tournament.awaitingPairing);
-}
-
-function NextGames({ dossier }: { dossier: Dossier }) {
-  const cards = liveTournaments(dossier).filter((tournament) => tournament.nextGame || tournament.awaitingPairing || dayStatus(tournament.endDate, dossier.today) === "today");
-  if (cards.length === 0) return null;
-  return (
-    <div className="grid gap-3">
-      {cards.map((tournament) =>
-        tournament.nextGame ? (
-          <NextGameBanner key={tournament.id} dossier={dossier} tournament={tournament} />
-        ) : (
-          <LiveStatus key={tournament.id} tournament={tournament} />
-        ),
-      )}
-    </div>
-  );
 }
 
 function colorName(color: PieceColor): string {
@@ -1107,7 +1450,7 @@ function Glance({ glance }: { glance: OpponentGlance }) {
         {glance.bestRank ? ` · labākā vieta ${glance.bestRank}.` : ""}
       </p>
       {glance.recent.length > 0 ? (
-        <ul className="mt-2 grid gap-1 text-pine-soft">
+        <ul className="mt-2 grid gap-1 text-on-pine">
           {glance.recent.map((row) => (
             <li key={`${row.endDate}-${row.name}`}>
               {row.endDate ? `${formatDate(row.endDate)} · ` : ""}
@@ -1121,126 +1464,6 @@ function Glance({ glance }: { glance: OpponentGlance }) {
       ) : null}
     </div>
   );
-}
-
-function NextGameBanner({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
-  const next = tournament.nextGame;
-  if (!next) return null;
-  const bye = isBye(next.opponent);
-  const played = priorGames(dossier, next.opponent);
-  const last = latestMeeting(played);
-  return (
-    <section className="overflow-hidden rounded-2xl bg-pine text-white">
-      <div className="grid sm:grid-cols-[8.5rem_1fr]">
-        <div className="grid place-items-center bg-white px-4 py-5">
-          <MiniBoard color={next.color} />
-        </div>
-        <div className="px-5 py-5 sm:px-6">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="text-sm font-medium tracking-wide uppercase">Nākamā partija</p>
-            <p className="text-sm tabular-nums">{next.round}. kārta</p>
-          </div>
-          <div className="mt-3 flex flex-wrap items-end gap-8">
-            <div>
-              <p className="text-sm text-pine-soft">Galdiņš</p>
-              <p className="font-display text-6xl leading-none tabular-nums">{next.board > 0 ? next.board : "—"}</p>
-            </div>
-            <div>
-              <p className="text-sm text-pine-soft">Krāsa</p>
-              <p className="mt-2 font-display text-3xl">{colorName(next.color)}</p>
-            </div>
-          </div>
-          <p className="mt-4 text-lg">
-            {bye ? "Brīva kārta" : `pret ${next.opponent}${next.opponentTitle ? `, ${next.opponentTitle}` : ""}`}
-          </p>
-          {bye ? null : (
-            <>
-              <p className="mt-1 text-sm text-pine-soft">
-                {historyLine(played)}
-                {next.opponentFed ? ` · ${next.opponentFed}` : ""}
-              </p>
-              {last ? (
-                <p className="mt-1 text-sm text-pine-soft">
-                  Pēdējo reizi {formatDate(last.tournamentDate)}: {resultWord(last.result)},{" "}
-                  {colorName(last.color).toLocaleLowerCase("lv")}
-                  {last.tournamentName ? ` · ${last.tournamentName}` : ""}
-                </p>
-              ) : null}
-              {next.glance ? <Glance glance={next.glance} /> : null}
-            </>
-          )}
-          <p className="mt-1 text-sm text-pine-soft">
-            {placeLine(tournament)}
-            {next.startsAt ? ` · sākums ${next.startsAt}` : ""}
-          </p>
-          <Neighbors tournament={tournament} light />
-          <a
-            href={next.url}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 inline-flex h-11 items-center gap-2 text-sm font-medium text-white"
-          >
-            Izloze chess-results
-            <ExternalLink className="size-4" aria-hidden />
-          </a>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LiveStatus({ tournament }: { tournament: Tournament }) {
-  const played = new Set(tournament.games.filter((game) => game.score != null).map((game) => game.round)).size;
-  const last = [...tournament.games].sort((a, b) => b.round - a.round)[0];
-  const waiting = tournament.awaitingPairing;
-  // Without a published round count we cannot claim the tournament is over.
-  const finished = tournament.roundsScheduled != null && played >= tournament.roundsScheduled;
-  return (
-    <section className="rounded-2xl border border-line bg-surface px-5 py-4">
-      <p className="text-sm font-medium tracking-wide text-pine uppercase">
-        {waiting ? "Gaidām izlozi" : "Šodienas turnīrs"}
-      </p>
-      <p className="mt-2 text-lg">
-        {waiting
-          ? `Nākamā kārta vēl nav chess-results. Nospēlētas ${played}${tournament.roundsScheduled ? ` no ${tournament.roundsScheduled}` : ""} kārtām.`
-          : finished
-            ? `Visas ${tournament.roundsScheduled} kārtas ir nospēlētas. Nākamajā turnīrā te parādīsies galdiņš un krāsa.`
-            : `${playedRounds(played)}${tournament.roundsScheduled ? ` no ${tournament.roundsScheduled}` : ". Kārtu skaits chess-results nav publicēts"}. Nākamā izloze parādīsies pēc atjaunošanas.`}
-      </p>
-      {last ? (
-        <p className="mt-2 text-sm text-muted">
-          Pēdējā: {last.round}. kārta
-          {last.board > 0 ? `, ${last.board}. galds` : ""}, {colorName(last.color).toLocaleLowerCase("lv")}, pret {last.opponent}.
-        </p>
-      ) : null}
-      <Neighbors tournament={tournament} />
-    </section>
-  );
-}
-
-function playedRounds(count: number): string {
-  return count % 10 === 1 && count % 100 !== 11 ? `Nospēlēta ${count} kārta` : `Nospēlētas ${count} kārtas`;
-}
-
-function RoundNote({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
-  const next = tournament.nextGame;
-  if (next) {
-    const played = priorGames(dossier, next.opponent);
-    const bye = isBye(next.opponent);
-    return (
-      <p className="mb-3 text-sm">
-        Nākamā: {next.round}. kārta, {next.board > 0 ? `${next.board}. galds` : "galds vēl nav zināms"},{" "}
-        {colorName(next.color).toLocaleLowerCase("lv")}
-        {bye ? ", brīva kārta" : ` pret ${next.opponent}`}.
-        {bye ? "" : ` ${historyLine(played)}.`}
-        {next.startsAt ? ` Sākums ${next.startsAt}.` : ""}
-      </p>
-    );
-  }
-  if (tournament.awaitingPairing) {
-    return <p className="mb-3 text-sm text-brass">Nākamā izloze vēl nav publicēta. Spied «Atjaunot».</p>;
-  }
-  return null;
 }
 
 function timeline(dossier: Dossier): Game[] {
@@ -1300,11 +1523,14 @@ function ScaleBars({
   rows: { id: string; name: string; date: string; label: string; amount: number; bar: ReactNode }[];
 }) {
   const scale = Math.max(top, 1);
+  // Readable 12px labels do not fit under every bar once there are many tournaments.
+  const valueLabels = rows.length <= 12;
+  const dateEvery = Math.max(1, Math.ceil(rows.length / 7));
   return (
     <>
       {caption ? <p className="mt-1 text-sm text-muted">{caption}</p> : null}
       <div className="mt-3 flex gap-2">
-        <div className="flex h-36 w-8 shrink-0 flex-col justify-between pt-4 text-right text-[10px] leading-none text-muted tabular-nums">
+        <div className="flex h-36 w-9 shrink-0 flex-col justify-between pt-4 text-right text-xs leading-none text-muted tabular-nums">
           {ticks.map((tick) => (
             <span key={tick}>{top === 100 ? `${tick}%` : Number.isInteger(tick) ? tick : tick.toFixed(1)}</span>
           ))}
@@ -1318,11 +1544,13 @@ function ScaleBars({
             </div>
             <div className="relative flex h-full items-end gap-1">
               {rows.map((row) => (
-                <div key={row.id} className="flex h-full min-w-0 flex-1 items-end" title={row.name}>
+                <div key={row.id} className="flex h-full min-w-0 flex-1 items-end" title={`${row.name}: ${row.label}`}>
                   <div className="relative w-full" style={{ height: `${Math.max(0, (row.amount / scale) * 100)}%` }}>
-                    <span className="absolute bottom-full left-1/2 mb-0.5 -translate-x-1/2 text-[10px] leading-none tabular-nums whitespace-nowrap">
-                      {row.label}
-                    </span>
+                    {valueLabels ? (
+                      <span className="absolute bottom-full left-1/2 mb-0.5 -translate-x-1/2 text-xs leading-none tabular-nums whitespace-nowrap">
+                        {row.label}
+                      </span>
+                    ) : null}
                     {row.bar}
                   </div>
                 </div>
@@ -1330,9 +1558,9 @@ function ScaleBars({
             </div>
           </div>
           <div className="mt-1 flex gap-1">
-            {rows.map((row) => (
-              <span key={row.id} className="min-w-0 flex-1 truncate text-center text-[10px] text-muted tabular-nums">
-                {shortWhen(row.date)}
+            {rows.map((row, index) => (
+              <span key={row.id} className="min-w-0 flex-1 overflow-visible text-center text-xs whitespace-nowrap text-muted tabular-nums">
+                {index % dateEvery === 0 ? shortWhen(row.date) : ""}
               </span>
             ))}
           </div>
@@ -1650,39 +1878,48 @@ function Neighbors({ tournament, light = false }: { tournament: Tournament; ligh
   const rows = tournament.standings;
   if (!rows || (!rows.above && !rows.below)) return null;
   return (
-    <p className={`text-sm ${light ? "mt-2 text-pine-soft" : "mb-3 text-muted"}`}>
-      {rows.above ? `Virs: ${rows.above.rank}. ${rows.above.name} (${formatPoints(rows.above.points)})` : "Neviens nav virs"}
+    <p className={`text-sm ${light ? "mt-2 text-on-pine" : "mb-3 text-muted"}`}>
+      {rows.above ? `Virs: ${rows.above.rank}. ${personName(rows.above.name)} (${formatPoints(rows.above.points)})` : "Neviens nav virs"}
       {" · "}
-      {rows.below ? `Zem: ${rows.below.rank}. ${rows.below.name} (${formatPoints(rows.below.points)})` : "Neviens nav zem"}
+      {rows.below ? `Zem: ${rows.below.rank}. ${personName(rows.below.name)} (${formatPoints(rows.below.points)})` : "Neviens nav zem"}
     </p>
   );
 }
 
-function RoundLine({ games }: { games: Game[] }) {
-  const rows = [...games].sort((a, b) => a.round - b.round);
-  if (rows.length === 0) return null;
+/** One box per round of the tournament: results so far, the next round marked, the rest outlined. */
+function RoundLine({ games, scheduled, nextRound }: { games: Game[]; scheduled: number | null; nextRound?: number }) {
+  const byRound = new Map(games.map((game) => [game.round, game]));
+  const lastRound = Math.max(scheduled ?? 0, ...games.map((game) => game.round));
+  if (lastRound < 1 || games.length === 0) return null;
+  const rounds = Array.from({ length: lastRound }, (_, index) => index + 1);
   return (
     <div className="mb-3">
       <p className="mb-2 text-sm text-muted">Partiju rezultāti</p>
       <ol className="flex gap-1.5 overflow-x-auto pb-1">
-        {rows.map((game) => {
-          const mark = game.score == null ? "—" : game.score >= 1 ? "1" : game.score > 0 ? "½" : "0";
+        {rounds.map((round) => {
+          const game = byRound.get(round);
+          const score = game?.score ?? null;
+          const mark = score == null ? "" : score >= 1 ? "1" : score > 0 ? "½" : "0";
           const tone =
-            game.score == null
-              ? "bg-bg-deep text-muted"
-              : game.score >= 1
-                ? "bg-pine-soft text-pine"
-                : game.score > 0
+            score != null
+              ? score >= 1
+                ? "bg-pine text-white"
+                : score > 0
                   ? "bg-bg-deep text-ink"
-                  : "bg-loss/15 text-loss";
+                  : "bg-loss/15 text-loss"
+              : round === nextRound
+                ? "border-2 border-pine text-pine"
+                : "border border-dashed border-line text-muted";
+          const title = game ? `${round}. kārta: ${game.opponent}` : `${round}. kārta`;
           return (
             <li
-              key={`${game.round}-${game.opponent}`}
+              key={round}
               className={`grid h-12 w-9 shrink-0 grid-rows-2 place-items-center rounded-lg text-center tabular-nums ${tone}`}
-              title={game.opponent}
+              title={title}
+              aria-label={`${title}${mark ? `, ${mark}` : round === nextRound ? ", nākamā" : ""}`}
             >
-              <span className="text-[10px] leading-none text-muted">{game.round}</span>
-              <span className="text-sm leading-none font-medium">{mark}</span>
+              <span className="text-xs leading-none opacity-70">{round}</span>
+              <span className="text-sm leading-none font-medium">{mark || (round === nextRound ? "•" : "")}</span>
             </li>
           );
         })}
@@ -1704,7 +1941,7 @@ function summaryText(dossier: Dossier): string {
   if (next) {
     const played = priorGames(dossier, next.opponent);
     lines.push(
-      `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${next.opponent}. ${historyLine(played)}.`,
+      `Nākamā: ${next.round}. kārta, ${next.board > 0 ? `${next.board}. galds, ` : ""}${colorName(next.color).toLocaleLowerCase("lv")} pret ${personName(next.opponent)}. ${historyLine(played)}.`,
     );
     if (next.startsAt) lines.push(`Sākums ${next.startsAt}.`);
   }
@@ -1748,6 +1985,7 @@ function CopySummary({ dossier, compact = false }: { dossier: Dossier; compact?:
 function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tournament }) {
   const next = tournament.nextGame;
   if (!next) return null;
+  const bye = isBye(next.opponent);
   return (
     <div className="border-t border-white/20 bg-pine text-white">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2 sm:px-6">
@@ -1755,20 +1993,15 @@ function LiveDock({ dossier, tournament }: { dossier: Dossier; tournament: Tourn
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">
             {next.round}. kārta · {next.board > 0 ? `${next.board}. galds` : "galds nav zināms"} · {colorName(next.color).toLocaleLowerCase("lv")}
+            {next.startsAt ? ` · ${next.startsAt}` : ""}
           </p>
-          <p className="truncate">
-            pret {isBye(next.opponent) ? "brīvu kārtu" : next.opponent}
+          <p className="truncate">pret {bye ? "brīvu kārtu" : personName(next.opponent)}</p>
+          <p className="truncate text-sm text-on-pine">
+            {bye ? placeLine(tournament) : `${historyLine(priorGames(dossier, next.opponent))} · ${placeLine(tournament)}`}
           </p>
-          <p className="truncate text-sm text-pine-soft">
-            {isBye(next.opponent)
-              ? placeLine(tournament)
-              : `${historyLine(priorGames(dossier, next.opponent))} · ${placeLine(tournament)}`}
-          </p>
-          <Neighbors tournament={tournament} light />
         </div>
         <CopySummary dossier={dossier} compact />
       </div>
     </div>
   );
 }
-
