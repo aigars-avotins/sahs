@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { dayStatus, isBye, parsePlayerCard, parseRoundClock, parseRoundDate, personName, rigaInstant, parseRoundPairing, parseTournamentMeta, pendingGameFromCard, rigaToday } from "../src/lib/chess/parse";
 import { paceOf, scopedDossier, scoreRate } from "../src/lib/chess/stats";
 import { dossier, fixture } from "./helpers";
+import { buildDossier, parseSearchResults, parseTournamentMeta } from "../src/lib/chess/parse";
 
 test("saved HTML: results, colors and FIDE identities survive extra row attributes", () => {
   const card = parsePlayerCard(fixture("player-card"));
@@ -73,4 +74,23 @@ test("round start is read with its date and converted from Riga time", () => {
   assert.equal(rigaInstant("2026-10-24", ""), null);
   assert.equal(personName("Kalniņš, Roberts Aleksandrs"), "Roberts Aleksandrs Kalniņš");
   assert.equal(personName("bye"), "bye");
+});
+test("a tournament without any result yet has no place and no points", () => {
+  const card = parsePlayerCard(fixture("player-card"));
+  card.games = card.games.map(g => ({ ...g, result: "unknown" as const, score: null, resultRaw: "" }));
+  const data = buildDossier({ hits: parseSearchResults(fixture("search")), cards: [card], metas: [parseTournamentMeta(fixture("tournament"))], nextGames: [null], standings: [null], today: "2026-10-20", fetchedAt: "2026-10-20T09:00:00Z", fideId: "11662255" });
+  assert.equal(data.tournaments[0].rank, null); assert.equal(data.tournaments[0].points, null);
+  assert.equal(data.totals.tournaments, 0); assert.equal(data.totals.bestRank, null);
+});
+test("forfeits keep their points but are not played games; byes are not opponents", () => {
+  const card = parsePlayerCard(fixture("player-card"));
+  card.games[0] = { ...card.games[0], resultRaw: "+", result: "win", score: 1 };
+  card.games[1] = { ...card.games[1], opponent: "bye", resultRaw: "½", result: "draw", score: 0.5 };
+  const data = buildDossier({ hits: parseSearchResults(fixture("search")), cards: [card], metas: [parseTournamentMeta(fixture("tournament"))], nextGames: [null], standings: [null], today: "2026-10-24", fetchedAt: "2026-10-24T09:00:00Z", fideId: "11662255" });
+  assert.equal(data.tournaments[0].games[0].unplayed, "forfeit"); assert.equal(data.tournaments[0].games[1].unplayed, "bye");
+  assert.equal(data.totals.games, 0); assert.equal(data.totals.wins, 0); assert.equal(data.totals.tournaments, 1);
+  assert.equal(data.opponents.some(o => o.name === "bye"), false);
+  const forfeited = data.opponents.find(o => o.meetings.some(g => g.unplayed === "forfeit"));
+  assert.equal(forfeited?.games, 0); assert.equal(forfeited?.wins, 0);
+  assert.equal(scoreRate(data.tournaments[0].games), null);
 });

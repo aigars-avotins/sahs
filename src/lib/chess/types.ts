@@ -16,6 +16,8 @@ export type Game = {
   result: GameResult;
   resultRaw: string;
   score: number | null;
+  /** Result without a game over the board: counts for tournament points, not for played-game statistics. */
+  unplayed?: "forfeit" | "bye";
   color: PieceColor;
   tournamentId: string;
   tournamentName: string;

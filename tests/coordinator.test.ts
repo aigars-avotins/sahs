@@ -84,3 +84,15 @@ test("a deployment repairs a cached local invocation error without discarding pa
   const blocked=harness();blocked.setState({version:2,policy:1,entries:{},failures:3,lastError:'Illegal invocation: previous failure',retryAfterUntil:Date.parse('2026-10-24T10:00:00Z'),nextRequestAt:0,nextAllowedAt:Date.parse('2026-10-24T10:00:00Z')});
   await blocked.create().load(blocked.job);assert.equal(blocked.times.length,0);
 });
+test("a slow refresh answers with the last good snapshot and still lands for the next visitor", async () => {
+  const h = harness(); await h.create().load(h.job); h.advance(ACTIVE_TTL + 1);
+  const c = h.create();
+  const quick = await c.load(h.job, 5_000);
+  assert.equal(quick.ok, true);
+  await c.load(h.job); // the refresh that kept running
+  assert.equal(h.times.length, 4); assert.equal(c.busy, false);
+});
+test("the first ever load waits even with a short wait budget", async () => {
+  const h = harness(); const result = await h.create().load(h.job, 1);
+  assert.equal(result.ok, true); assert.equal(h.times.length, 3);
+});

@@ -8,7 +8,7 @@ Spēlētājs: Valters Avotiņš, FIDE 11662255, klubs Rīgas Mats/A.Tihomirovs. 
 
 Četras pārslēdzamas sadaļas: Aktuālais, Turnīri, Pretinieki, Statistika.
 
-Aktuālais rāda pēdējo vai notiekošo turnīru: statusu, nosaukumu, datumu un vietu, punktus un vietu no dalībnieku skaita. Ja izloze ir publicēta, visredzamāk jābūt galdiņam, krāsai un kārtas sākuma laikam (ar “pēc N min”, ja chess-results dod datumu), tad pretiniekam. Ja pāra vēl nav, ir gaidīšanas stāvoklis. Poga “Paziņot telefonā” ir pašā nākamās partijas vai gaidīšanas kartē. Nākamā partija netiek atkārtota: zaļā josla galvenē Aktuālajā parādās tikai tad, kad nākamās partijas karte ir aizritināta, un turnīra kartē nav teikuma “Nākamā: …”; partiju sarakstā nākamā kārta ir iezīmēta ar “Nākamā”.
+Aktuālais rāda notiekošo turnīru; ja tāda nav, tuvāko gaidāmo un pēdējo noslēgušos. Turnīra kartē: statusu, nosaukumu, datumu un vietu, punktus un vietu no dalībnieku skaita. Ja izloze ir publicēta, visredzamāk jābūt galdiņam, krāsai un kārtas sākuma laikam (ar “pēc N min”, ja chess-results dod datumu), tad pretiniekam. Ja pāra vēl nav, ir gaidīšanas stāvoklis. Turnīram, kurā vēl nav neviena rezultāta, vieta un punkti netiek rādīti. Poga “Paziņot telefonā” ir pašā nākamās partijas vai gaidīšanas kartē. Nākamā partija netiek atkārtota: zaļā josla galvenē Aktuālajā parādās tikai tad, kad nākamās partijas karte ir aizritināta, un turnīra kartē nav teikuma “Nākamā: …”; partiju sarakstā nākamā kārta ir iezīmēta ar “Nākamā”.
 
 Turnīru sarakstā noslēdzies turnīrs ir pelēks. Zaļš statuss ir tikai notiekošam. Datums, kas jau ir nosaukumā, otru reizi netiek rādīts. Turnīra kartē nav “Lapā:” laika un nav performance.
 
@@ -18,7 +18,7 @@ Tempa filtrs izmanto FIDE robežas: zibšahs līdz 10 minūtēm, ātrais šahs v
 
 Ja kārtu skaits nav publicēts, lapa neraksta, ka visas kārtas ir nospēlētas.
 
-Statistikas augšā: liels punktu procents ar vienu kopsavilkuma rindu (turnīri, partijas, punkti, bilance), pēdējās 5 partijas un labākā vieta. Nav virsrakstu “turnīri, bilance un krāsa” un nav teikuma “Katrs stabiņš ir viens turnīrs.” Punktu īpatsvara grafikam ir fiksēta 0–100% skala.
+Statistika skaita tikai nospēlētās partijas: uzvaras/zaudējumi bez spēles un brīvās kārtas tajā neieskaitās (partiju sarakstā tās ir ar “+”, “−” vai “Brīva kārta”). Statistikas augšā: liels punktu procents ar vienu kopsavilkuma rindu (turnīri, partijas, punkti, bilance), pēdējās 5 partijas un labākā vieta. Nav virsrakstu “turnīri, bilance un krāsa” un nav teikuma “Katrs stabiņš ir viens turnīrs.” Punktu īpatsvara grafikam ir fiksēta 0–100% skala.
 
 ## Nākamais pretinieks
 

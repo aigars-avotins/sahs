@@ -460,7 +460,53 @@ function opponentKey(game: Game, identities: Map<string, Set<string>>): string {
 }
 
 export function isBye(name: string): boolean {
-  return /^(brīvs|bye|spielfrei)$/i.test(name.trim());
+  return /^(brīvs|bye|spielfrei|not paired|nicht gepaart)$/i.test(name.trim());
+}
+
+/** Played over the board: has a result and is neither a forfeit nor a bye. */
+/** Derived when the dossier is built, so cached player cards get it too. */
+function unplayedKind(game: { opponent: string; resultRaw: string }): Game["unplayed"] {
+  if (isBye(game.opponent)) return "bye";
+  const raw = game.resultRaw.replace(/\s/g, "");
+  return raw === "+" || raw === "-" ? "forfeit" : undefined;
+}
+
+export function isPlayed(game: Pick<Game, "score" | "unplayed">): boolean {
+  return game.score != null && !game.unplayed;
+}
+
+/** Played-game totals for a set of tournaments; forfeits, byes and unplayed rounds are left out. */
+export function totalsFor(tournaments: Tournament[]): Dossier["totals"] {
+  const games = tournaments.flatMap((tournament) => tournament.games);
+  const played = games.filter(isPlayed);
+  const ranks = tournaments.flatMap((tournament) => (tournament.rank && tournament.rank > 0 ? [tournament.rank] : []));
+  return {
+    tournaments: tournaments.filter((tournament) => tournament.games.some((game) => game.score != null)).length,
+    games: played.length,
+    pending: games.filter((game) => game.score == null).length,
+    scored: played.length,
+    wins: played.filter((game) => game.result === "win").length,
+    draws: played.filter((game) => game.result === "draw").length,
+    losses: played.filter((game) => game.result === "loss").length,
+    score: played.reduce((sum, game) => sum + (game.score ?? 0), 0),
+    bestRank: ranks.length ? Math.min(...ranks) : null,
+  };
+}
+
+/** Recounts an opponent's record from the given meetings. */
+export function opponentRecord(opponent: Opponent, meetings: Game[]): Opponent {
+  const played = meetings.filter(isPlayed);
+  return {
+    ...opponent,
+    meetings,
+    games: played.length,
+    pending: meetings.filter((game) => game.score == null).length,
+    scored: played.length,
+    wins: played.filter((game) => game.result === "win").length,
+    draws: played.filter((game) => game.result === "draw").length,
+    losses: played.filter((game) => game.result === "loss").length,
+    score: played.reduce((sum, game) => sum + (game.score ?? 0), 0),
+  };
 }
 
 export function parseRoundClock(html: string): string {
@@ -580,6 +626,7 @@ export function buildDossier(input: {
     const name = longerName(meta?.name, card?.tournamentName, hit.tournamentName);
     const games: Game[] = (card?.games ?? []).map((game) => ({
       ...game,
+      unplayed: unplayedKind(game),
       tournamentId: hit.id,
       tournamentName: name,
       tournamentDate: hit.endDate || meta?.eventDate || "",
@@ -591,6 +638,8 @@ export function buildDossier(input: {
       games.filter((game) => game.score != null).map((game) => game.round),
     ).size;
     const scheduled = meta?.roundsScheduled ?? null;
+    // Before the first result chess-results lists a seeding place and 0 points; that is not a result.
+    const started = scoredRounds > 0;
     const live = Boolean(endDate) && (meta?.startDate || endDate) <= input.today && endDate >= input.today;
     return {
       id: hit.id,
@@ -599,12 +648,12 @@ export function buildDossier(input: {
       playerUrl: absoluteChessUrl(hit.playerHref),
       startDate: meta?.startDate || endDate,
       endDate,
-      rank: card?.rank ?? hit.rank,
+      rank: started ? (card?.rank ?? hit.rank) : null,
       rounds: hit.rounds,
       fieldSize: hit.fieldSize ?? meta?.fieldSize ?? null,
       club: hit.club,
       fed: hit.fed,
-      points: card?.points ?? null,
+      points: started ? (card?.points ?? null) : null,
       performance: card?.performance ?? null,
       startingRank: card?.startingRank ?? null,
       birthYear: card?.birthYear ?? "",
@@ -631,6 +680,7 @@ export function buildDossier(input: {
     ids.add(game.opponentFideId); identities.set(nameKey(game), ids);
   }
   for (const game of games) {
+    if (game.unplayed === "bye") continue;
     const key = opponentKey(game, identities);
     let row = byOpponent.get(key);
     if (!row) {
@@ -654,19 +704,10 @@ export function buildDossier(input: {
       };
       byOpponent.set(key, row);
     }
-    if (game.score != null) row.games += 1;
-    else row.pending += 1;
     row.meetings.push(game);
-    if (game.score != null) {
-      row.scored += 1;
-      row.score += game.score;
-      if (game.result === "win") row.wins += 1;
-      if (game.result === "draw") row.draws += 1;
-      if (game.result === "loss") row.losses += 1;
-    }
   }
 
-  const opponents = [...byOpponent.values()];
+  const opponents = [...byOpponent.values()].map((row) => opponentRecord(row, row.meetings));
   for (const opponent of opponents) {
     opponent.meetings.sort((a, b) => {
       const left = isoDate(a.tournamentDate) || a.tournamentDate;
@@ -684,10 +725,6 @@ export function buildDossier(input: {
   }
   opponents.sort((a, b) => b.games - a.games || b.score - a.score || a.name.localeCompare(b.name, "lv"));
 
-  const scored = games.filter((game) => game.score != null);
-  const ranks = tournaments
-    .map((tournament) => tournament.rank)
-    .filter((rank): rank is number => rank != null && rank > 0);
   const profile = tournaments[0];
   const missing = tournaments.filter((tournament) => tournament.partial).length;
   const siteName = input.hits.find((hit) => hit.name)?.name || PLAYER.sourceName;
@@ -706,17 +743,7 @@ export function buildDossier(input: {
     today: input.today,
     tournaments,
     opponents,
-    totals: {
-      tournaments: tournaments.length,
-      games: scored.length,
-      pending: games.length - scored.length,
-      scored: scored.length,
-      wins: scored.filter((game) => game.result === "win").length,
-      draws: scored.filter((game) => game.result === "draw").length,
-      losses: scored.filter((game) => game.result === "loss").length,
-      score: scored.reduce((sum, game) => sum + (game.score ?? 0), 0),
-      bestRank: ranks.length ? Math.min(...ranks) : null,
-    },
+    totals: totalsFor(tournaments),
     partialNote:
       missing > 0
         ? "Daļu turnīru lapu neizdevās nolasīt. Spied «Atjaunot», lai mēģinātu vēlreiz."

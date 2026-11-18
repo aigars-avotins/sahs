@@ -45,10 +45,31 @@ export class SourceCoordinator {
     private pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
   ) {}
 
-  load(job: (context: SourceContext) => Promise<Success>): Promise<LoadResult> {
-    if (this.pending) return this.pending;
-    this.pending = this.run(job).finally(() => { this.pending = null; });
-    return this.pending;
+  /**
+   * With `waitMs`, a refresh that takes longer than that answers with the last good
+   * snapshot instead; the refresh itself keeps running and lands for the next visitor.
+   * The first ever load (no snapshot yet) always waits.
+   */
+  load(job: (context: SourceContext) => Promise<Success>, waitMs = Infinity): Promise<LoadResult> {
+    if (!this.pending) this.pending = this.run(job).finally(() => { this.pending = null; });
+    if (!Number.isFinite(waitMs)) return this.pending;
+    return this.waitOrSnapshot(this.pending, waitMs);
+  }
+
+  /** True while a refresh is still running. */
+  get busy(): boolean {
+    return this.pending != null;
+  }
+
+  private async waitOrSnapshot(run: Promise<LoadResult>, waitMs: number): Promise<LoadResult> {
+    const saved = await this.store.read();
+    const snapshot = saved?.snapshot;
+    if (!saved || !snapshot) return run;
+    return Promise.race([run, this.pause(waitMs).then(() => this.reply(saved, snapshot))]);
+  }
+
+  private reply(state: CacheState, snapshot: Success): Success {
+    return { ...snapshot, dossier: { ...snapshot.dossier, today: rigaToday(new Date(this.now())), nextCheckAt: new Date(state.nextAllowedAt).toISOString() } };
   }
 
   private async run(job: (context: SourceContext) => Promise<Success>): Promise<LoadResult> {
@@ -75,7 +96,7 @@ export class SourceCoordinator {
       state.policy = 3;
       await this.store.write(state);
     }
-    const reply = (snapshot: Success): Success => ({ ...snapshot, dossier: { ...snapshot.dossier, today: rigaToday(new Date(this.now())), nextCheckAt: new Date(state.nextAllowedAt).toISOString() } });
+    const reply = (snapshot: Success): Success => this.reply(state, snapshot);
     if (this.now() < state.nextAllowedAt) {
       if (state.snapshot) return reply(state.snapshot);
       return { ok: false, error: state.lastError || "Iepriekšējā ielāde neizdevās. Tās iemesls vecajā versijā netika saglabāts.", nextCheckAt: new Date(state.nextAllowedAt).toISOString() };

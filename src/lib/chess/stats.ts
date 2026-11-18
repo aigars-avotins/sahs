@@ -1,3 +1,4 @@
+import { isPlayed, opponentRecord, totalsFor } from "./parse";
 import type { Dossier, Game, Opponent, Tournament } from "./types";
 
 export type Pace = "rapid" | "blitz" | "classical" | "unknown";
@@ -14,28 +15,18 @@ export function paceOf(control: string): Pace {
   const effective = minutes + increment;
   return effective <= 10 ? "blitz" : effective < 60 ? "rapid" : "classical";
 }
+
 export function scopedDossier(dossier: Dossier, tournaments: Tournament[]): Dossier {
   const ids = new Set(tournaments.map(t => t.id));
   const opponents: Opponent[] = dossier.opponents.flatMap(opponent => {
     const meetings = opponent.meetings.filter(g => ids.has(g.tournamentId));
-    if (!meetings.length) return [];
-    const scored = meetings.filter(g => g.score != null);
-    return [{ ...opponent, meetings, games: scored.length, pending: meetings.length - scored.length, scored: scored.length,
-      wins: scored.filter(g => g.result === "win").length, draws: scored.filter(g => g.result === "draw").length,
-      losses: scored.filter(g => g.result === "loss").length, score: scored.reduce((s,g) => s + (g.score || 0), 0),
-    }];
+    return meetings.length ? [opponentRecord(opponent, meetings)] : [];
   });
-  const games = tournaments.flatMap(t => t.games);
-  const scored = games.filter(g => g.score != null);
-  const ranks = tournaments.flatMap(t => t.rank && t.rank > 0 ? [t.rank] : []);
-  return { ...dossier, tournaments, opponents, totals: {
-    tournaments: tournaments.length, games: scored.length, pending: games.length - scored.length,
-    scored: scored.length, wins: scored.filter(g => g.result === "win").length,
-    draws: scored.filter(g => g.result === "draw").length, losses: scored.filter(g => g.result === "loss").length,
-    score: scored.reduce((s,g) => s + (g.score || 0), 0), bestRank: ranks.length ? Math.min(...ranks) : null,
-  } };
+  return { ...dossier, tournaments, opponents, totals: totalsFor(tournaments) };
 }
+
+/** Percentage of points from games played over the board. */
 export function scoreRate(games: Game[]): number | null {
-  const scored = games.filter(g => g.score != null);
-  return scored.length ? Math.round(scored.reduce((s,g) => s + (g.score || 0), 0) / scored.length * 100) : null;
+  const played = games.filter(isPlayed);
+  return played.length ? Math.round(played.reduce((s, g) => s + (g.score || 0), 0) / played.length * 100) : null;
 }

@@ -33,6 +33,7 @@ import {
   formatPoints,
   formatStamp,
   isBye,
+  isPlayed,
   isoDate,
   personName,
   rigaInstant,
@@ -68,7 +69,7 @@ function tidyTournamentName(name: string): string {
   return name
     .replace(/\(\s*\)/g, " ")
     .replace(/\s{2,}/g, " ")
-    .replace(/\s+([,.:;–-])/g, "$1")
+    .replace(/\s+([,.:;])/g, "$1")
     .trim();
 }
 
@@ -365,7 +366,20 @@ function TopBar({
     const onScroll = () => setCompact((current) => (current ? window.scrollY > 8 : window.scrollY > 64));
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    // Follow the phone's light/dark switch live, unless a theme was picked here.
+    const system = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const onSystem = (event: MediaQueryListEvent) => {
+      const picked = safeStorage.get("valters-theme");
+      if (picked === "dark" || picked === "light") return;
+      if (event.matches) document.documentElement.dataset.theme = "dark";
+      else delete document.documentElement.dataset.theme;
+      setDark(event.matches);
+    };
+    system?.addEventListener("change", onSystem);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      system?.removeEventListener("change", onSystem);
+    };
   }, []);
   function toggleTheme() {
     const next = document.documentElement.dataset.theme === "dark" ? "" : "dark";
@@ -438,7 +452,14 @@ function TopBar({
                 suppressHydrationWarning
                 title={stamped ? `Atjaunots ${stamped}` : undefined}
               >
-                {loading ? "Notiek" : `Atjaunots ${fresh}`}
+                {loading ? (
+                  "Notiek"
+                ) : (
+                  <>
+                    <span className="hidden sm:inline">Atjaunots </span>
+                    {fresh}
+                  </>
+                )}
               </p>
             </>
           )}
@@ -526,7 +547,7 @@ function CurrentView({
   onBannerVisible: (visible: boolean) => void;
 }) {
   const live = liveTournaments(dossier);
-  const shown = live.length > 0 ? live : dossier.tournaments.slice(0, 1);
+  const shown = live.length > 0 ? live : quietTournaments(dossier);
   return (
     <div className="grid gap-4">
       <NextGames dossier={dossier} alerts={alerts} onBannerVisible={onBannerVisible} />
@@ -540,7 +561,7 @@ function CurrentView({
             tournament={tournament}
             games={tournament.games}
             today={dossier.today}
-            startOpen
+            startOpen={live.length > 0 || tournament.points != null}
             featured
           />
         ))
@@ -581,6 +602,16 @@ function NextGames({
       )}
     </div>
   );
+}
+
+/** Between tournaments: the nearest upcoming one and the latest with results. */
+function quietTournaments(dossier: Dossier): Tournament[] {
+  const upcoming = dossier.tournaments
+    .filter((tournament) => dayStatus(tournament.endDate, dossier.today, tournament.startDate) === "upcoming")
+    .sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0))[0];
+  const latest = dossier.tournaments.find((tournament) => tournament.points != null);
+  const shown = [upcoming, latest].filter((tournament): tournament is Tournament => Boolean(tournament));
+  return shown.length ? shown : dossier.tournaments.slice(0, 1);
 }
 
 function countdownLabel(next: NextGame, now: number): string {
@@ -743,7 +774,7 @@ function LiveStatus({ tournament, alerts }: { tournament: Tournament; alerts: Al
         </p>
       ) : null}
       <Neighbors tournament={tournament} />
-      {finished ? null : (
+      {finished && !alerts.enabled ? null : (
         <div className="mt-3">
           <AlertButton alerts={alerts} />
         </div>
@@ -783,7 +814,7 @@ function StatsView({ dossier }: { dossier: Dossier }) {
   const { totals } = dossier;
   const games = useMemo(() => timeline(dossier), [dossier]);
   const rate = scoreRate(games);
-  const recent = games.filter((game) => game.score != null).slice(-5);
+  const recent = games.filter(isPlayed).slice(-5);
   const best = bestTournament(dossier.tournaments);
   const summary = [
     tournamentCountLabel(totals.tournaments),
@@ -801,7 +832,7 @@ function StatsView({ dossier }: { dossier: Dossier }) {
           <p className="mt-1 text-xs text-muted">Bilance: uzvaras–neizšķirti–zaudējumi</p>
         </div>
         <div className="rounded-2xl border border-line bg-white px-5 py-4">
-          <p className="text-sm text-muted">Pēdējās {recent.length || 5} partijas</p>
+          <p className="text-sm text-muted">{recent.length === 1 ? "Pēdējā partija" : `Pēdējās ${recent.length || 5} partijas`}</p>
           {recent.length ? (
             <ol className="mt-3 flex gap-1.5">
               {recent.map((game) => (
@@ -1151,7 +1182,7 @@ function TournamentCard({
               <dt className="text-muted">Punkti</dt>
               <dd className={featured ? "font-display text-4xl text-pine" : "text-lg font-medium"}>
                 {formatPoints(tournament.points)}
-                {cap ? (
+                {cap && tournament.points != null ? (
                   <span className="text-base font-sans text-muted">
                     {" "}
                     no {cap.value}
@@ -1246,7 +1277,7 @@ function GameTable({ games, nextRound }: { games: Game[]; nextRound?: number }) 
             {upcoming ? (
               <span className="rounded-full bg-pine px-3 py-1 text-xs font-medium text-white">Nākamā</span>
             ) : (
-              <ResultMark result={game.result} labeled />
+              <ResultMark result={game.result} unplayed={game.unplayed} labeled />
             )}
           </li>
         );
@@ -1328,7 +1359,7 @@ function Meetings({ opponent }: { opponent: Opponent }) {
                   </p>
                 ) : null}
               </div>
-              <ResultMark result={game.result} />
+              <ResultMark result={game.result} unplayed={game.unplayed} />
             </div>
           </li>
           ))
@@ -1353,13 +1384,30 @@ function PieceMark({ color }: { color: PieceColor }) {
   );
 }
 
-function ResultMark({ result, labeled = false }: { result: GameResult; labeled?: boolean }) {
-  const view = {
+function ResultMark({
+  result,
+  labeled = false,
+  unplayed,
+}: {
+  result: GameResult;
+  labeled?: boolean;
+  unplayed?: Game["unplayed"];
+}) {
+  const base = {
     win: { label: "1", name: "Uzvara", cls: "bg-pine text-white" },
     draw: { label: "½", name: "Neizšķirts", cls: "bg-bg-deep text-ink" },
     loss: { label: "0", name: "Zaudējums", cls: "bg-loss/15 text-loss" },
     unknown: { label: "–", name: "Nav rezultāta", cls: "border border-dashed border-line text-muted" },
   }[result];
+  // Forfeits and byes keep their points but are drawn outlined: no game was played.
+  const view =
+    unplayed === "bye"
+      ? { ...base, name: "Brīva kārta", cls: "border border-line text-muted" }
+      : unplayed === "forfeit"
+        ? result === "win"
+          ? { label: "+", name: "Uzvara bez spēles", cls: "border border-pine text-pine" }
+          : { label: "−", name: "Zaudējums bez spēles", cls: "border border-loss text-loss" }
+        : base;
   const mark = (
     <span
       title={view.name}
@@ -1400,7 +1448,7 @@ function priorGames(dossier: Dossier, name: string): Game[] {
   if (!key || isBye(name)) return [];
   return dossier.tournaments
     .flatMap((tournament) => tournament.games)
-    .filter((game) => foldName(game.opponent) === key && game.score != null);
+    .filter((game) => foldName(game.opponent) === key && isPlayed(game));
 }
 
 function resultWord(result: GameResult): string {
@@ -1469,7 +1517,8 @@ function Glance({ glance }: { glance: OpponentGlance }) {
 function timeline(dossier: Dossier): Game[] {
   return [...dossier.tournaments]
     .sort((a, b) => (a.endDate < b.endDate ? -1 : a.endDate > b.endDate ? 1 : 0))
-    .flatMap((tournament) => [...tournament.games].sort((a, b) => a.round - b.round));
+    .flatMap((tournament) => [...tournament.games].sort((a, b) => a.round - b.round))
+    .filter((game) => !game.unplayed);
 }
 
 function Charts({ dossier }: { dossier: Dossier }) {
@@ -1632,7 +1681,7 @@ function TournamentShare({ dossier }: { dossier: Dossier }) {
 function TournamentResults({ dossier }: { dossier: Dossier }) {
   const rows = chartRows(dossier)
     .map((tournament) => {
-      const games = tournament.games.filter((game) => game.score != null);
+      const games = tournament.games.filter(isPlayed);
       return {
         id: tournament.id,
         name: tournament.name,
@@ -1737,7 +1786,7 @@ function BalanceBar({ dossier }: { dossier: Dossier }) {
 function ColorRecord({ games }: { games: Game[] }) {
   const rows = (["white", "black"] as const)
     .map((color) => {
-      const played = games.filter((game) => game.color === color && game.score != null);
+      const played = games.filter((game) => game.color === color && isPlayed(game));
       return { color, played: played.length, wins: played.filter((game) => game.result === "win").length };
     })
     .filter((row) => row.played > 0);
@@ -1899,7 +1948,8 @@ function RoundLine({ games, scheduled, nextRound }: { games: Game[]; scheduled: 
         {rounds.map((round) => {
           const game = byRound.get(round);
           const score = game?.score ?? null;
-          const mark = score == null ? "" : score >= 1 ? "1" : score > 0 ? "½" : "0";
+          const mark =
+            score == null ? "" : game?.unplayed === "forfeit" ? (score >= 1 ? "+" : "−") : score >= 1 ? "1" : score > 0 ? "½" : "0";
           const tone =
             score != null
               ? score >= 1
@@ -1929,7 +1979,10 @@ function RoundLine({ games, scheduled, nextRound }: { games: Game[]; scheduled: 
 }
 
 function summaryText(dossier: Dossier): string {
-  const tournament = dossier.tournaments.find((item) => item.endDate === dossier.today) ?? dossier.tournaments[0];
+  const tournament =
+    dossier.tournaments.find((item) => item.endDate === dossier.today) ??
+    dossier.tournaments.find((item) => item.points != null) ??
+    dossier.tournaments[0];
   if (!tournament) return "Nav turnīru.";
   const played = tournament.games.filter((game) => game.score != null).length;
   const when = tournament.endDate === dossier.today ? " šodien" : ` ${formatDate(tournament.endDate)}`;

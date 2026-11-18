@@ -1,8 +1,11 @@
+/* Fonts are served from this site, not Google, so visitors' IP addresses stay here. */
+@import "@fontsource-variable/fraunces/opsz.css";
+@import "@fontsource-variable/outfit";
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
-  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", serif;
+  --font-sans: "Outfit Variable", "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Fraunces Variable", "Iowan Old Style", "Palatino Linotype", serif;
   --color-bg: #ffffff;
   --color-bg-deep: #f3f6f4;
   --color-surface: #ffffff;
@@ -44,6 +47,7 @@
   h2,
   h3 {
     font-family: var(--font-display);
+    font-weight: 650;
     text-wrap: balance;
   }
 }
@@ -75,6 +79,11 @@ html[data-theme="dark"] .bg-white {
 
 html[data-theme="dark"] .bg-white\/95 {
   background-color: color-mix(in srgb, var(--color-surface) 95%, transparent);
+}
+
+/* The weights the page was designed with (Google only served 560 and 650). */
+.font-display {
+  font-weight: 560;
 }
 
 .bg-piece {

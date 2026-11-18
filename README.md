@@ -15,11 +15,11 @@ Visi apmeklētāji izmanto vienu servera kešatmiņu. Poga **Atjaunot**, automā
 | Nākotnes un vēsturisko turnīru kartītes | 7 dienas (aktīvajam turnīram pārslēdzas uz 1 minūti) |
 
 - Vienlaicīgi ienākušie pieprasījumi tiek apvienoti. Avota pieprasījumi ir secīgi, ar vismaz 2 sekunžu atstarpi.
-- Nav cron, fonā darbojošās avota aptaujas vai automātisku tūlītēju atkārtojumu. Paslēpta lapa un bezsaistes režīms neaptaujā serveri.
+- Nav cron vai fonā darbojošās avota aptaujas bez apmeklētājiem. Atjaunošanu sāk tikai apmeklējums; ja tā ilgst vairāk par 10 sekundēm, apmeklētājs uzreiz saņem pēdējos derīgos datus, bet ielāde turpinās fonā (Durable Object alarm to pabeidz arī pēc objekta izlikšanas) un jaunie dati ir nākamajam apmeklējumam. Paslēpta lapa un bezsaistes režīms neaptaujā serveri.
 - Pēc pirmās kļūmes atkārtota pārbaude pēc 1 minūtes; secīgām kļūmēm — 2, 4, 8 un līdz 15 minūtēm. Avota `Retry-After` vienmēr ir saistošs, arī ja tas ir ilgāks; atpazītai cilvēka pārbaudes lapai — 15 minūšu aizture. Sākotnējais kļūdas iemesls tiek saglabāts un parādīts arī aiztures laikā.
 - Kļūda aptur konkrēto ielādes ciklu. Neatpazīts HTML un cita spēlētāja kartīte neaizstāj iepriekšējos derīgos datus.
 - Aizture, parsētās lapas un pēdējais derīgais kopsavilkums saglabājas pēc servera pārstartēšanas. Arī neveiksmīga pirmā ielāde saglabā aizturi.
-- Pirmā ielāde ir lēnāka, jo vēsture jānolasa ar pauzēm. Turpmāk avots tiek pieprasīts tikai novecojušajām kešatmiņas daļām.
+- Pirmā ielāde (tukša kešatmiņa) ir lēnāka un vienīgā, kurā apmeklētājs gaida, jo vēsture jānolasa ar pauzēm. Turpmāk avots tiek pieprasīts tikai novecojušajām kešatmiņas daļām.
 
 Avotam nav publicēta API limita, tāpēc šie intervāli nesniedz garantiju pret bloķēšanu. Pieprasījumu biežumu nevajag palielināt, lai kompensētu avota kavētu izlozes publicēšanu.
 
@@ -42,13 +42,13 @@ npm run build
 npm run deploy
 ```
 
-`wrangler.jsonc` satur `CHESS_CACHE` Durable Object saistījumu un SQLite migrāciju. Visas Worker instances izmanto vienu objektu `valters-source-v2`, tādēļ apmeklētāju un ierīču skaits nepavairo avota pieprasījumus. Objekts glabā kešatmiņu un aiztures pastāvīgā storage.
+`wrangler.jsonc` satur `CHESS_CACHE` Durable Object saistījumu un SQLite migrāciju. Visas Worker instances izmanto vienu objektu `valters-source-v2`, tādēļ apmeklētāju un ierīču skaits nepavairo avota pieprasījumus. Objekts glabā kešatmiņu un aiztures pastāvīgā SQLite storage: viena rinda katrai avota lapai (`cache_entry`) un viena aizturēm un kopsavilkumam (`cache_meta`), tāpēc rakstīšana pārraksta tikai mainītās rindas. Vecais vienas rindas formāts tiek pārnests automātiski. Fonti tiek piegādāti no šīs pašas lapas (`@fontsource-variable`), nevis no Google.
 
 Cloudflare Git savienojumam: build komanda `npm run build`, deploy komanda `npm run deploy`. Arī `npm run build:cloudflare` paliek pieejama. Parastā būve pēc noklusējuma veido Cloudflare variantu; Node servera būvei jālieto `npm run build:node`. Izvietošanas komanda skaidri izmanto saknes `wrangler.jsonc`, pati palaiž būvi un augšupielādē `dist/server/index.js` kopā ar `dist/client` resursiem; tā nekompilē TanStack pirmkodu ar Wrangler bundleri. Esošam Worker jāsaglabā tā pašreizējais nosaukums laukā `name` un esošie domēna/Access iestatījumi. Jauna konfigurācija pati nepārceļ domēnu un neizvieto lapu. Ja ieslēgta Cloudflare Access aizsardzība, tā jāpiemēro visai lietotnei, ieskaitot servera funkcijas. Lapā nav savas autentifikācijas.
 
 ## Statistikas precizitāte
 
-Nospēlētās un gaidāmās partijas tiek skaitītas atsevišķi. Krāsu punktu procents izmanto tikai partijas ar rezultātu. Turnīriem glabājas sākuma un beigu datums. Pretiniekiem priekšroka ir FIDE ID, ja tas ir atrodams avota HTML; atšķirīgi ID netiek apvienoti. Bez ID izmanto normalizētu vārdu, federāciju un klubu, lai neapvienotu iespējamos vārdabrāļus. Nosaukumi bez ID tiek piesaistīti zināmam ID tikai tad, ja sakritība ir nepārprotama.
+Nospēlētās un gaidāmās partijas tiek skaitītas atsevišķi. Uzvaras/zaudējumi bez spēles (`+`/`-`) un brīvās kārtas ieskaitās turnīra punktos, bet ne nospēlēto partiju statistikā; brīvā kārta nav pretinieks. Turnīram bez neviena rezultāta netiek rādīta vieta un punkti, jo chess-results pirms 1. kārtas rāda sākuma sarakstu. Krāsu punktu procents izmanto tikai partijas ar rezultātu. Turnīriem glabājas sākuma un beigu datums. Pretiniekiem priekšroka ir FIDE ID, ja tas ir atrodams avota HTML; atšķirīgi ID netiek apvienoti. Bez ID izmanto normalizētu vārdu, federāciju un klubu, lai neapvienotu iespējamos vārdabrāļus. Nosaukumi bez ID tiek piesaistīti zināmam ID tikai tad, ja sakritība ir nepārprotama.
 
 ## Paziņojumi un instalēšana telefonā
 
