@@ -89,7 +89,7 @@ export class SourceCoordinator {
       delete state.lastError;
     }
     if (state.policy !== POLICY) {
-      if (state.policy !== 1 && state.policy !== 2) {
+      if (state.policy == null) {
         // Shorten only our legacy first-error 15-minute guard. The old explicit
         // 403/429 guards were at least an hour and must not be bypassed.
         if (state.failures === 1 && state.nextAllowedAt <= state.nextRequestAt + 16 * MINUTE) {
