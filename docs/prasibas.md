@@ -18,7 +18,15 @@ Tempa filtrs izmanto FIDE robežas: zibšahs līdz 10 minūtēm, ātrais šahs v
 
 Ja kārtu skaits nav publicēts, lapa neraksta, ka visas kārtas ir nospēlētas.
 
-Statistika skaita tikai nospēlētās partijas: uzvaras/zaudējumi bez spēles un brīvās kārtas tajā neieskaitās (partiju sarakstā tās ir ar “+”, “−” vai “Brīva kārta”). Statistikas augšā: liels punktu procents ar vienu kopsavilkuma rindu (turnīri, partijas, punkti, bilance), pēdējās 5 partijas un labākā vieta. Nav virsrakstu “turnīri, bilance un krāsa” un nav teikuma “Katrs stabiņš ir viens turnīrs.” Punktu īpatsvara grafikam ir fiksēta 0–100% skala.
+Statistika skaita tikai nospēlētās partijas: uzvaras/zaudējumi bez spēles un brīvās kārtas tajā neieskaitās (partiju sarakstā tās ir ar “+”, “−” vai “Brīva kārta”, statistikas apakšā ir piezīme ar to skaitu). Statistikā ir tie paši gada un tempa filtri kā Turnīros, un tie maina visu sadaļu. Secība:
+
+- kopsavilkums: punktu procents, forma (pēdējās 10 partijas, garākā uzvaru sērija, pašreizējā sērija no 2) un labākā vieta;
+- “Visas partijas”: katra partija kā lauciņš, sagrupēts pa turnīriem, vecākā kreisajā pusē; pieskaroties redzams turnīrs, kārta, krāsa un pretinieks;
+- “Turnīri”: viena rinda katram turnīram ar vietas joslu starp dalībniekiem un punktiem no iespējamajiem;
+- “Pēc krāsas”, “Pret stiprākiem un vājākiem” (pēc pretinieka punktiem tajā pašā turnīrā, bez reitingiem), “Turnīra gaitā” (pirmā/otrā puse, augšējā galdu ceturtdaļa) un 3 biežākie pretinieki;
+- “Sporta klases”: secīgi turnīri pa klasēm ar punktiem un labāko vietu.
+
+Sākuma numurs netiek rādīts: šahā tas nav rezultāts.
 
 ## Nākamais pretinieks
 

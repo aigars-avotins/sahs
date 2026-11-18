@@ -27,6 +27,24 @@ import {
 import { PLAYER, SPORT_CLASS } from "@/lib/chess/config";
 import { getDossier } from "@/lib/chess/dossier";
 import {
+  boardSplit,
+  classProgress,
+  filterTournaments,
+  halvesSplit,
+  rateOf,
+  recordOf,
+  repeatOpponents,
+  resultsByTournament,
+  sportClass,
+  streaksOf,
+  strengthSplit,
+  tournamentYears,
+  unplayedCounts,
+  type PaceFilter,
+  type Streaks,
+  type Tally,
+} from "@/lib/chess/insights";
+import {
   dayStatus,
   foldName,
   formatDate,
@@ -93,15 +111,6 @@ function displayTournamentName(name: string, endDate: string): string {
     }
   }
   return tidyTournamentName(next);
-}
-
-function sportClass(tournament: Tournament): string | null {
-  if (SPORT_CLASS[tournament.id]) return SPORT_CLASS[tournament.id];
-  const name = tournament.name.toLowerCase();
-  if (name.includes("iesācēj")) return "Iesācēji";
-  if (/3\s*\.?\s*sp\.?\s*kl/.test(name)) return "3. sporta klase";
-  if (/4\s*\.?\s*sp\.?\s*kl/.test(name)) return "4. sporta klase";
-  return null;
 }
 
 function statusClass(label: string | null): string {
@@ -813,60 +822,132 @@ function RoundNote({ dossier, tournament, featured }: { dossier: Dossier; tourna
 }
 
 function StatsView({ dossier }: { dossier: Dossier }) {
-  const { totals } = dossier;
-  const games = useMemo(() => timeline(dossier), [dossier]);
-  const rate = scoreRate(games);
-  const recent = games.filter(isPlayed).slice(-5);
-  const best = bestTournament(dossier.tournaments);
+  const [year, setYear] = useState("all");
+  const [pace, setPace] = useState<PaceFilter>("all");
+  const years = useMemo(() => tournamentYears(dossier.tournaments), [dossier.tournaments]);
+  const scoped = useMemo(() => {
+    const tournaments = filterTournaments(dossier.tournaments, year, pace);
+    return scopedDossier(dossier, tournaments);
+  }, [dossier, year, pace]);
+  const { totals } = scoped;
+  const rows = useMemo(() => resultsByTournament(scoped.tournaments), [scoped.tournaments]);
+  const ordered = useMemo(() => rows.flatMap((row) => row.games), [rows]);
+  const rate = scoreRate(ordered);
+  const recent = ordered.filter(isPlayed).slice(-10);
+  const recentRate = scoreRate(recent);
+  const streaks = streaksOf(ordered);
+  const best = bestTournament(scoped.tournaments);
+  const unplayed = unplayedCounts(scoped.tournaments);
   const summary = [
     tournamentCountLabel(totals.tournaments),
     `${totals.games} ${totals.games % 10 === 1 && totals.games % 100 !== 11 ? "partija" : "partijas"}`,
-    pointsLabel(totals.score),
     `${totals.wins}–${totals.draws}–${totals.losses}`,
   ].join(" · ");
+  const unplayedNote = [
+    unplayed.forfeitWins ? `${unplayed.forfeitWins} ${unplayed.forfeitWins === 1 ? "uzvara" : "uzvaras"} bez spēles` : "",
+    unplayed.forfeitLosses ? `${unplayed.forfeitLosses} ${unplayed.forfeitLosses === 1 ? "zaudējums" : "zaudējumi"} bez spēles` : "",
+    unplayed.byes ? `${unplayed.byes} ${unplayed.byes === 1 ? "brīva kārta" : "brīvas kārtas"}` : "",
+  ].filter(Boolean);
   return (
     <div className="grid gap-4">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="rounded-2xl border border-line bg-white px-5 py-4">
-          <p className="text-sm text-muted">Punkti no iespējamajiem</p>
-          <p className="mt-1 font-display text-6xl leading-none text-pine tabular-nums">{rate == null ? "—" : `${rate}%`}</p>
-          <p className="mt-3 text-sm">{summary}</p>
-          <p className="mt-1 text-xs text-muted">Bilance: uzvaras–neizšķirti–zaudējumi</p>
-        </div>
-        <div className="rounded-2xl border border-line bg-white px-5 py-4">
-          <p className="text-sm text-muted">{recent.length === 1 ? "Pēdējā partija" : `Pēdējās ${recent.length || 5} partijas`}</p>
-          {recent.length ? (
-            <ol className="mt-3 flex gap-1.5">
-              {recent.map((game) => (
-                <li key={`${game.tournamentId}-${game.round}`} title={`${game.tournamentName}, ${game.round}. kārta: ${game.opponent}`}>
-                  <ResultMark result={game.result} />
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="mt-3 text-sm text-muted">Vēl nav partiju ar rezultātu.</p>
-          )}
-          <p className="mt-2 text-xs text-muted">Jaunākā ir labajā pusē.</p>
-        </div>
-        <div className="rounded-2xl border border-line bg-white px-5 py-4">
-          <p className="text-sm text-muted">Labākais rezultāts</p>
-          {best ? (
-            <>
-              <p className="mt-1 font-display text-4xl leading-none text-pine tabular-nums">
-                {best.rank}. vieta
-                {best.fieldSize ? <span className="font-sans text-base text-muted"> no {best.fieldSize}</span> : null}
-              </p>
-              <p className="mt-2 text-sm">{displayTournamentName(best.name, best.endDate)}</p>
-              {best.endDate ? <p className="text-sm text-muted tabular-nums">{formatDate(best.endDate)}</p> : null}
-            </>
-          ) : (
-            <p className="mt-3 text-sm text-muted">Vietas vēl nav publicētas.</p>
-          )}
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <fieldset className="min-w-0">
+          <legend className="mb-2 text-sm font-medium">Gads</legend>
+          <div className="flex flex-wrap gap-2">
+            <FilterChip pressed={year === "all"} onClick={() => setYear("all")}>
+              Visi
+            </FilterChip>
+            {years.map((item) => (
+              <FilterChip key={item} pressed={year === item} onClick={() => setYear(item)}>
+                {item}
+              </FilterChip>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="min-w-0">
+          <legend className="mb-2 text-sm font-medium">Temps</legend>
+          <div className="flex flex-wrap gap-2">
+            <FilterChip pressed={pace === "all"} onClick={() => setPace("all")}>
+              Visi
+            </FilterChip>
+            <FilterChip pressed={pace === "rapid"} onClick={() => setPace("rapid")}>
+              Rapids
+            </FilterChip>
+            <FilterChip pressed={pace === "other"} onClick={() => setPace("other")}>
+              Citi
+            </FilterChip>
+          </div>
+        </fieldset>
       </div>
-      <Charts dossier={dossier} />
+
+      {ordered.length === 0 ? (
+        <Empty>Šajā atlasē vēl nav partiju ar rezultātu.</Empty>
+      ) : (
+        <>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <StatCard label="Punkti no iespējamajiem">
+              <p className="mt-1 font-display text-6xl leading-none text-pine tabular-nums">{rate == null ? "—" : `${rate}%`}</p>
+              <p className="mt-3 text-sm">{summary}</p>
+              <p className="mt-1 text-xs text-muted">Uzvaras–neizšķirti–zaudējumi, tikai nospēlētās partijas.</p>
+            </StatCard>
+            <StatCard label="Forma">
+              <p className="mt-1 font-display text-4xl leading-none text-pine tabular-nums">{recentRate == null ? "—" : `${recentRate}%`}</p>
+              <p className="mt-2 text-sm">
+                pēdējās {recent.length} partijās{rate != null && recentRate != null ? ` (kopā ${rate}%)` : ""}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                Garākā uzvaru sērija: {streaks.longestWin}
+                {streaks.current && streaks.current.length > 1 ? ` · tagad ${streakLabel(streaks.current)}` : ""}
+              </p>
+            </StatCard>
+            <StatCard label="Labākais rezultāts">
+              {best ? (
+                <>
+                  <p className="mt-1 font-display text-4xl leading-none text-pine tabular-nums">
+                    {best.rank}. vieta
+                    {best.fieldSize ? <span className="font-sans text-base text-muted"> no {best.fieldSize}</span> : null}
+                  </p>
+                  <p className="mt-2 text-sm">{displayTournamentName(best.name, best.endDate)}</p>
+                  {best.endDate ? <p className="text-sm text-muted tabular-nums">{formatDate(best.endDate)}</p> : null}
+                </>
+              ) : (
+                <p className="mt-3 text-sm text-muted">Vietas vēl nav publicētas.</p>
+              )}
+            </StatCard>
+          </div>
+
+          <ResultStrip rows={rows} />
+          <TournamentRows tournaments={scoped.tournaments} />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <ColorCard tournaments={scoped.tournaments} />
+            <StrengthCard tournaments={scoped.tournaments} />
+            <PhaseCard tournaments={scoped.tournaments} />
+            <OpponentsCard opponents={scoped.opponents} />
+          </div>
+          <ClassSteps tournaments={scoped.tournaments} />
+          {unplayedNote.length ? (
+            <p className="text-sm text-muted">Statistikā neieskaitīts: {unplayedNote.join(", ")}. Turnīra punktos tās ir ieskaitītas.</p>
+          ) : null}
+        </>
+      )}
     </div>
   );
+}
+
+function StatCard({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-line bg-white px-5 py-4">
+      <p className="text-sm text-muted">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function streakLabel(current: NonNullable<Streaks["current"]>): string {
+  const many = current.length !== 1;
+  if (current.result === "win") return `${current.length} ${many ? "uzvaras" : "uzvara"} pēc kārtas`;
+  if (current.result === "draw") return `${current.length} ${many ? "neizšķirti" : "neizšķirts"} pēc kārtas`;
+  return `${current.length} ${many ? "zaudējumi" : "zaudējums"} pēc kārtas`;
 }
 
 /** Best place; ties go to the larger field, then the more recent tournament. */
@@ -881,6 +962,241 @@ function bestTournament(tournaments: Tournament[]): Tournament | null {
   return placed[0] ?? null;
 }
 
+/** Every result of the season as a square, grouped by tournament; tapping one shows the game. */
+function ResultStrip({ rows }: { rows: Array<{ tournament: Tournament; games: Game[] }> }) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const all = rows.flatMap((row) => row.games);
+  const game = all.find((item) => `${item.tournamentId}-${item.round}` === picked) ?? null;
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4">
+      <h3 className="text-xl">Visas partijas</h3>
+      <p className="mt-1 text-sm text-muted">Vecākā kreisajā pusē. Pieskaries partijai, lai redzētu, pret ko.</p>
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2">
+        {rows.map((row) => (
+          <ol key={row.tournament.id} className="flex flex-wrap gap-1" aria-label={displayTournamentName(row.tournament.name, row.tournament.endDate)}>
+            {row.games.map((item) => {
+              const id = `${item.tournamentId}-${item.round}`;
+              const mark = stripMark(item);
+              return (
+                <li key={id}>
+                  <button
+                    type="button"
+                    onClick={() => setPicked((current) => (current === id ? null : id))}
+                    aria-pressed={picked === id}
+                    aria-label={`${item.round}. kārta pret ${item.opponent}: ${mark.name}`}
+                    className={`grid size-8 place-items-center rounded-md text-xs font-medium tabular-nums ${mark.cls} ${picked === id ? "ring-2 ring-ink ring-offset-1" : ""}`}
+                  >
+                    {mark.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ))}
+      </div>
+      <p className="mt-3 min-h-5 text-sm" aria-live="polite">
+        {game
+          ? `${formatDate(game.tournamentDate)} · ${game.tournamentName} · ${game.round}. kārta: ${colorName(game.color).toLocaleLowerCase("lv")} pret ${game.opponent} — ${stripMark(game).name.toLocaleLowerCase("lv")}`
+          : ""}
+      </p>
+    </section>
+  );
+}
+
+function stripMark(game: Game): { label: string; name: string; cls: string } {
+  if (game.unplayed === "bye") return { label: formatPoints(game.score), name: "Brīva kārta", cls: "border border-line text-muted" };
+  if (game.unplayed === "forfeit")
+    return game.result === "win"
+      ? { label: "+", name: "Uzvara bez spēles", cls: "border border-pine text-pine" }
+      : { label: "−", name: "Zaudējums bez spēles", cls: "border border-loss text-loss" };
+  if (game.result === "win") return { label: "1", name: "Uzvara", cls: "bg-pine text-white" };
+  if (game.result === "draw") return { label: "½", name: "Neizšķirts", cls: "bg-bg-deep text-ink" };
+  return { label: "0", name: "Zaudējums", cls: "bg-loss/15 text-loss" };
+}
+
+/** One row per tournament: place among the field as a bar, points out of the maximum. */
+function TournamentRows({ tournaments }: { tournaments: Tournament[] }) {
+  const rows = tournaments.filter((tournament) => tournament.points != null);
+  if (rows.length === 0) return null;
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4">
+      <h3 className="text-xl">Turnīri</h3>
+      <p className="mt-1 text-sm text-muted">Josla rāda vietu starp visiem dalībniekiem: jo garāka, jo augstāk.</p>
+      <ol className="mt-3 grid gap-3">
+        {rows.map((tournament) => {
+          const cap = maxPoints(tournament);
+          const share = cap && tournament.points != null ? Math.round((tournament.points / cap.value) * 100) : null;
+          const field = tournament.fieldSize ?? 0;
+          const standing = tournament.rank && field > 1 ? 1 - (tournament.rank - 1) / (field - 1) : null;
+          const sport = sportClass(tournament);
+          return (
+            <li key={tournament.id} className="grid gap-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="min-w-0 truncate text-sm font-medium">{displayTournamentName(tournament.name, tournament.endDate)}</p>
+                <p className="shrink-0 text-sm tabular-nums">
+                  {formatPoints(tournament.points)}
+                  {cap ? `/${cap.value}` : ""}
+                  {share != null ? <span className="text-muted"> · {share}%</span> : null}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-bg-deep" aria-hidden>
+                  {standing != null ? <div className="h-full rounded-full bg-chart" style={{ width: `${Math.max(4, standing * 100)}%` }} /> : null}
+                </div>
+                <p className="w-24 shrink-0 text-right text-xs text-muted tabular-nums">
+                  {tournament.rank ? `${tournament.rank}. vieta${field ? ` no ${field}` : ""}` : "vieta nav zināma"}
+                </p>
+              </div>
+              <p className="text-xs text-muted tabular-nums">
+                {formatDate(tournament.endDate)}
+                {sport ? ` · ${sport}` : ""}
+              </p>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+/** A labelled win/draw/loss bar with the score rate. */
+function TallyRow({ label, tally }: { label: string; tally: Tally }) {
+  const rate = rateOf(tally);
+  const parts = [
+    { value: tally.wins, cls: "bg-chart" },
+    { value: tally.draws, cls: "bg-chart-soft" },
+    { value: tally.losses, cls: "bg-loss" },
+  ];
+  return (
+    <li>
+      <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+        <span className="min-w-0">{label}</span>
+        <span className="shrink-0 tabular-nums">
+          {tally.games ? `${tally.wins}–${tally.draws}–${tally.losses}` : "nav partiju"}
+          {rate != null ? <span className="text-muted"> · {rate}%</span> : null}
+        </span>
+      </div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-bg-deep" aria-hidden>
+        {tally.games
+          ? parts.map((part, index) =>
+              part.value ? <div key={index} className={part.cls} style={{ width: `${(part.value / tally.games) * 100}%` }} /> : null,
+            )
+          : null}
+      </div>
+    </li>
+  );
+}
+
+function TallyCard({ title, hint, rows }: { title: string; hint: string; rows: Array<{ label: string; tally: Tally }> }) {
+  if (rows.every((row) => row.tally.games === 0)) return null;
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4">
+      <h3 className="text-xl">{title}</h3>
+      <p className="mt-1 text-sm text-muted">{hint}</p>
+      <ul className="mt-3 grid gap-3">
+        {rows.map((row) => (
+          <TallyRow key={row.label} label={row.label} tally={row.tally} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ColorCard({ tournaments }: { tournaments: Tournament[] }) {
+  const games = tournaments.flatMap((tournament) => tournament.games);
+  return (
+    <TallyCard
+      title="Pēc krāsas"
+      hint="Uzvaras–neizšķirti–zaudējumi un punktu procents ar katru krāsu."
+      rows={[
+        { label: "Baltie", tally: recordOf(games.filter((game) => game.color === "white")) },
+        { label: "Melnie", tally: recordOf(games.filter((game) => game.color === "black")) },
+      ]}
+    />
+  );
+}
+
+function StrengthCard({ tournaments }: { tournaments: Tournament[] }) {
+  const split = strengthSplit(tournaments);
+  return (
+    <TallyCard
+      title="Pret stiprākiem un vājākiem"
+      hint="Pēc pretinieka punktiem tajā pašā turnīrā, salīdzinot ar Valtera punktiem."
+      rows={[
+        { label: "Ieguva vairāk punktu", tally: split.above },
+        { label: "Tikpat punktu", tally: split.equal },
+        { label: "Ieguva mazāk punktu", tally: split.below },
+      ]}
+    />
+  );
+}
+
+function PhaseCard({ tournaments }: { tournaments: Tournament[] }) {
+  const halves = halvesSplit(tournaments);
+  const boards = boardSplit(tournaments);
+  return (
+    <TallyCard
+      title="Turnīra gaitā"
+      hint="Turnīra pirmā un otrā puse; augšējie galdi ir pirmā ceturtdaļa, kur spēlē līderi."
+      rows={[
+        { label: "Pirmā puse", tally: halves.first },
+        { label: "Otrā puse", tally: halves.second },
+        { label: "Augšējie galdi", tally: boards.top },
+        { label: "Pārējie galdi", tally: boards.rest },
+      ]}
+    />
+  );
+}
+
+function OpponentsCard({ opponents }: { opponents: Opponent[] }) {
+  const top = repeatOpponents(opponents)
+    .sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "lv"))
+    .slice(0, 3);
+  if (top.length === 0) return null;
+  return (
+    <TallyCard
+      title="Biežākie pretinieki"
+      hint="Apvienoti pēc vārda un uzvārda."
+      rows={top.map((opponent) => ({
+        label: `${opponent.name} · ${opponent.games}×`,
+        tally: { games: opponent.games, wins: opponent.wins, draws: opponent.draws, losses: opponent.losses, score: opponent.score },
+      }))}
+    />
+  );
+}
+
+function ClassSteps({ tournaments }: { tournaments: Tournament[] }) {
+  const steps = classProgress(tournaments);
+  if (steps.length === 0) return null;
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4">
+      <h3 className="text-xl">Sporta klases</h3>
+      <ol className="mt-3 grid gap-3 border-l-2 border-line pl-4">
+        {steps.map((step, index) => (
+          <li key={`${step.label}-${step.from}`} className="relative">
+            <span
+              aria-hidden
+              className={"absolute top-1.5 -left-[1.4rem] size-3 rounded-full " + (index === steps.length - 1 ? "bg-pine" : "bg-line")}
+            />
+            <p className="font-medium">{step.label}</p>
+            <p className="text-sm text-muted tabular-nums">
+              {shortRange(step.from, step.to)} · {tournamentCountLabel(step.tournaments)} · {formatPoints(step.points)}
+              {step.rounds ? `/${step.rounds}` : ""} punkti
+              {step.bestRank ? ` · labākā vieta ${step.bestRank}.${step.bestField ? ` no ${step.bestField}` : ""}` : ""}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function shortRange(from: string, to: string): string {
+  const a = formatDate(from).slice(0, 6);
+  const b = formatDate(to).slice(0, 6);
+  return a === b || !to ? formatDate(from) : `${a}–${formatDate(to)}`;
+}
+
 function matchesQuery(haystack: string, query: string): boolean {
   const words = foldName(query).split(/[^a-z0-9]+/).filter(Boolean);
   if (words.length === 0) return true;
@@ -892,23 +1208,11 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [year, setYear] = useState("all");
-  const [pace, setPace] = useState("all");
+  const [pace, setPace] = useState<PaceFilter>("all");
   const [opponentSort, setOpponentSort] = useState<"games" | "name">("games");
   const needle = query.trim();
-  const years = useMemo(() => {
-    const found = new Set(dossier.tournaments.map((tournament) => tournament.endDate.slice(0, 4)).filter(Boolean));
-    return [...found].sort((a, b) => (a < b ? 1 : -1));
-  }, [dossier.tournaments]);
-
-  const scoped = useMemo(() => {
-    return dossier.tournaments.filter((tournament) => {
-      if (year !== "all" && !tournament.endDate.startsWith(year)) return false;
-      const kind = paceOf(tournament.timeControl);
-      if (pace === "rapid" && kind !== "rapid") return false;
-      if (pace === "other" && (kind === "rapid" || kind === "unknown")) return false;
-      return true;
-    });
-  }, [dossier.tournaments, year, pace]);
+  const years = useMemo(() => tournamentYears(dossier.tournaments), [dossier.tournaments]);
+  const scoped = useMemo(() => filterTournaments(dossier.tournaments, year, pace), [dossier.tournaments, year, pace]);
 
   const scopedOpponents = useMemo(
     () => (year === "all" && pace === "all" ? dossier.opponents : scopedDossier(dossier, scoped).opponents),
@@ -944,36 +1248,7 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
     );
   }, [scopedOpponents, needle]);
 
-  const repeats = useMemo(() => {
-    const groups = new Map<string, Opponent[]>();
-    for (const opponent of opponents) {
-      const key = foldName(opponent.name);
-      groups.set(key, [...(groups.get(key) ?? []), opponent]);
-    }
-    const rows: Opponent[] = [];
-    for (const group of groups.values()) {
-      const games = group.reduce((sum, opponent) => sum + opponent.games, 0);
-      if (games < 2) continue;
-      if (group.length === 1) {
-        rows.push(group[0]);
-        continue;
-      }
-      const [first] = group;
-      rows.push({
-        ...first,
-        key: `repeat:${foldName(first.name)}`,
-        club: [...new Set(group.map((opponent) => opponent.club).filter(Boolean))].join(" · "),
-        games,
-        meetings: group.flatMap((opponent) => opponent.meetings),
-        wins: group.reduce((sum, opponent) => sum + opponent.wins, 0),
-        draws: group.reduce((sum, opponent) => sum + opponent.draws, 0),
-        losses: group.reduce((sum, opponent) => sum + opponent.losses, 0),
-        score: group.reduce((sum, opponent) => sum + opponent.score, 0),
-        scored: group.reduce((sum, opponent) => sum + opponent.scored, 0),
-      });
-    }
-    return rows;
-  }, [opponents]);
+  const repeats = useMemo(() => repeatOpponents(opponents), [opponents]);
   // Opponents met 2+ times are shown once, merged by name (most young players have no FIDE ID).
   const shownOpponents = useMemo(() => {
     const repeatNames = new Set(repeats.map((opponent) => foldName(opponent.name)));
@@ -1512,358 +1787,6 @@ function Glance({ glance }: { glance: OpponentGlance }) {
           ))}
         </ul>
       ) : null}
-    </div>
-  );
-}
-
-function timeline(dossier: Dossier): Game[] {
-  return [...dossier.tournaments]
-    .sort((a, b) => (a.endDate < b.endDate ? -1 : a.endDate > b.endDate ? 1 : 0))
-    .flatMap((tournament) => [...tournament.games].sort((a, b) => a.round - b.round))
-    .filter((game) => !game.unplayed);
-}
-
-function Charts({ dossier }: { dossier: Dossier }) {
-  const games = useMemo(() => timeline(dossier), [dossier]);
-  const today = dossier.tournaments.find((tournament) => dayStatus(tournament.endDate, dossier.today) === "today");
-  if (games.length === 0 && !today) return null;
-  return (
-    <section>
-      <SectionTitle title="Grafiki" hint="" />
-      <div className="grid gap-3 lg:grid-cols-2">
-        <TournamentPoints dossier={dossier} />
-        <TournamentShare dossier={dossier} />
-        <TournamentResults dossier={dossier} />
-        {today && today.games.length > 0 ? <RoundBars tournament={today} /> : null}
-        <BalanceBar dossier={dossier} />
-        <ColorSplit title="Spēlētās krāsas" hint="visas partijas" games={games} />
-        <ColorRecord games={games} />
-      </div>
-    </section>
-  );
-}
-
-function chartRows(dossier: Dossier): Tournament[] {
-  return [...dossier.tournaments]
-    .filter((tournament) => tournament.points != null || tournament.games.some((game) => game.score != null))
-    .sort((a, b) => (a.endDate < b.endDate ? -1 : a.endDate > b.endDate ? 1 : 0));
-}
-
-function shortWhen(value: string): string {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return match ? `${match[3]}.${match[2]}` : "—";
-}
-
-function niceTop(value: number): number {
-  if (value <= 1) return 1;
-  const exp = 10 ** Math.floor(Math.log10(value));
-  const step = value / exp;
-  const nice = step <= 1 ? 1 : step <= 2 ? 2 : step <= 5 ? 5 : 10;
-  return nice * exp;
-}
-
-function ScaleBars({
-  caption,
-  top,
-  ticks,
-  rows,
-}: {
-  caption: string;
-  top: number;
-  ticks: number[];
-  rows: { id: string; name: string; date: string; label: string; amount: number; bar: ReactNode }[];
-}) {
-  const scale = Math.max(top, 1);
-  // Readable 12px labels do not fit under every bar once there are many tournaments.
-  const valueLabels = rows.length <= 12;
-  const dateEvery = Math.max(1, Math.ceil(rows.length / 7));
-  return (
-    <>
-      {caption ? <p className="mt-1 text-sm text-muted">{caption}</p> : null}
-      <div className="mt-3 flex gap-2">
-        <div className="flex h-36 w-9 shrink-0 flex-col justify-between pt-4 text-right text-xs leading-none text-muted tabular-nums">
-          {ticks.map((tick) => (
-            <span key={tick}>{top === 100 ? `${tick}%` : Number.isInteger(tick) ? tick : tick.toFixed(1)}</span>
-          ))}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="relative h-36 pt-4">
-            <div className="pointer-events-none absolute inset-x-0 top-4 bottom-0 flex flex-col justify-between">
-              {ticks.map((tick) => (
-                <div key={tick} className="border-t border-line" />
-              ))}
-            </div>
-            <div className="relative flex h-full items-end gap-1">
-              {rows.map((row) => (
-                <div key={row.id} className="flex h-full min-w-0 flex-1 items-end" title={`${row.name}: ${row.label}`}>
-                  <div className="relative w-full" style={{ height: `${Math.max(0, (row.amount / scale) * 100)}%` }}>
-                    {valueLabels ? (
-                      <span className="absolute bottom-full left-1/2 mb-0.5 -translate-x-1/2 text-xs leading-none tabular-nums whitespace-nowrap">
-                        {row.label}
-                      </span>
-                    ) : null}
-                    {row.bar}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-1 flex gap-1">
-            {rows.map((row, index) => (
-              <span key={row.id} className="min-w-0 flex-1 overflow-visible text-center text-xs whitespace-nowrap text-muted tabular-nums">
-                {index % dateEvery === 0 ? shortWhen(row.date) : ""}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function TournamentPoints({ dossier }: { dossier: Dossier }) {
-  const rows = chartRows(dossier).filter((tournament) => tournament.points != null);
-  if (rows.length === 0) return null;
-  const top = niceTop(Math.max(...rows.map((tournament) => tournament.points ?? 0)));
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Punkti turnīros</h3>
-      <ScaleBars
-        caption=""
-        top={top}
-        ticks={[top, top / 2, 0]}
-        rows={rows.map((tournament) => ({
-          id: tournament.id,
-          name: tournament.name,
-          date: tournament.endDate,
-          label: formatPoints(tournament.points),
-          amount: tournament.points ?? 0,
-          bar: <div className="h-full w-full rounded-sm bg-chart" />,
-        }))}
-      />
-    </div>
-  );
-}
-
-function TournamentShare({ dossier }: { dossier: Dossier }) {
-  const rows = chartRows(dossier)
-    .map((tournament) => {
-      const cap = maxPoints(tournament);
-      if (tournament.points == null || !cap) return null;
-      return {
-        id: tournament.id,
-        name: tournament.name,
-        date: tournament.endDate,
-        share: tournament.points / cap.value,
-        note: cap.playedOnly ? "no nospēlētajām" : "no kārtām",
-      };
-    })
-    .filter((row): row is NonNullable<typeof row> => row != null);
-  if (rows.length === 0) return null;
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Punktu īpatsvars</h3>
-      <ScaleBars
-        caption="Punkti dalīti ar kārtu skaitu. Ja kārtas nav zināmas, ar nospēlētajām partijām. Mērogs 0–100%."
-        top={100}
-        ticks={[100, 50, 0]}
-        rows={rows.map((row) => ({
-          id: row.id,
-          name: `${row.name}: ${row.note}`,
-          date: row.date,
-          label: `${Math.round(row.share * 100)}%`,
-          amount: row.share * 100,
-          bar: <div className="h-full w-full rounded-sm bg-chart" />,
-        }))}
-      />
-    </div>
-  );
-}
-
-function TournamentResults({ dossier }: { dossier: Dossier }) {
-  const rows = chartRows(dossier)
-    .map((tournament) => {
-      const games = tournament.games.filter(isPlayed);
-      return {
-        id: tournament.id,
-        name: tournament.name,
-        date: tournament.endDate,
-        wins: games.filter((game) => game.result === "win").length,
-        draws: games.filter((game) => game.result === "draw").length,
-        losses: games.filter((game) => game.result === "loss").length,
-      };
-    })
-    .filter((row) => row.wins + row.draws + row.losses > 0);
-  const max = Math.max(1, ...rows.map((row) => row.wins + row.draws + row.losses));
-  const top = niceTop(max);
-  if (rows.length === 0) return null;
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Rezultāti turnīros</h3>
-      <ScaleBars
-        caption="Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums."
-        top={top}
-        ticks={[top, top / 2, 0]}
-        rows={rows.map((row) => {
-          const total = row.wins + row.draws + row.losses;
-          return {
-            id: row.id,
-            name: row.name,
-            date: row.date,
-            label: String(total),
-            amount: total,
-            bar: (
-              <div className="flex h-full w-full flex-col-reverse overflow-hidden rounded-sm">
-                {row.wins > 0 ? <div className="bg-chart" style={{ flex: row.wins }} /> : null}
-                {row.draws > 0 ? <div className="bg-chart-soft" style={{ flex: row.draws }} /> : null}
-                {row.losses > 0 ? <div className="bg-loss" style={{ flex: row.losses }} /> : null}
-              </div>
-            ),
-          };
-        })}
-      />
-    </div>
-  );
-}
-
-function RoundBars({ tournament }: { tournament: Tournament }) {
-  const games = [...tournament.games].sort((a, b) => a.round - b.round);
-  const scheduled = Math.max(tournament.roundsScheduled ?? 0, games.length, 1);
-  const byRound = new Map(games.map((game) => [game.round, game]));
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Šodienas kārtas</h3>
-      <div className="mt-4 flex h-24 items-end gap-1.5">
-        {Array.from({ length: scheduled }, (_, index) => {
-          const round = index + 1;
-          const game = byRound.get(round);
-          const score = game?.score;
-          const height = score == null ? 8 : Math.max(8, score * 100);
-          const cls = score == null ? "bg-line" : score >= 1 ? "bg-chart" : score > 0 ? "bg-chart-soft" : "bg-loss";
-          return (
-            <div key={round} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-              <div className="flex h-16 w-full items-end">
-                <div className={`w-full rounded-sm ${cls}`} style={{ height: `${height}%` }} title={game ? `${game.opponent}` : "vēl nav"} />
-              </div>
-              <span className="text-xs text-muted tabular-nums">{round}</span>
-            </div>
-          );
-        })}
-      </div>
-      <p className="mt-2 text-sm text-muted">Zaļš — uzvara, gaišs — neizšķirts, sarkans — zaudējums.</p>
-    </div>
-  );
-}
-
-function BalanceBar({ dossier }: { dossier: Dossier }) {
-  const { wins, draws, losses, scored } = dossier.totals;
-  const total = Math.max(scored, 1);
-  const parts = [
-    { label: "Uzvaras", value: wins, cls: "bg-chart" },
-    { label: "Neizšķirti", value: draws, cls: "bg-chart-soft" },
-    { label: "Zaudējumi", value: losses, cls: "bg-loss" },
-  ];
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Bilance</h3>
-      <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-bg-deep">
-        {parts.map((part) =>
-          part.value > 0 ? (
-            <div key={part.label} className={part.cls} style={{ width: `${(part.value / total) * 100}%` }} />
-          ) : null,
-        )}
-      </div>
-      <ul className="mt-3 grid grid-cols-3 gap-2 text-sm">
-        {parts.map((part) => (
-          <li key={part.label}>
-            <span className="block text-muted">{part.label}</span>
-            <span className="font-medium tabular-nums">{part.value}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ColorRecord({ games }: { games: Game[] }) {
-  const rows = (["white", "black"] as const)
-    .map((color) => {
-      const played = games.filter((game) => game.color === color && isPlayed(game));
-      return { color, played: played.length, wins: played.filter((game) => game.result === "win").length };
-    })
-    .filter((row) => row.played > 0);
-  if (rows.length === 0) return null;
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">Uzvaras pēc krāsas</h3>
-      <p className="mt-1 text-sm text-muted">Uzvaras no visām ar šo krāsu spēlētajām partijām.</p>
-      <ul className="mt-4 grid gap-3">
-        {rows.map((row) => (
-          <li key={row.color}>
-            <div className="mb-1 flex items-center justify-between gap-3 text-sm">
-              <span className="inline-flex items-center gap-2">
-                <Knight tone={row.color} className="size-5" />
-                {row.color === "white" ? "Baltie" : "Melnie"}
-              </span>
-              <span className="tabular-nums">
-                {row.wins} uzvaras no {row.played}
-              </span>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-bg-deep">
-              <div className="h-full bg-chart" style={{ width: `${(row.wins / row.played) * 100}%` }} />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ColorSplit({ title, hint, games }: { title: string; hint: string; games: Game[] }) {
-  const total = games.length;
-  const counts = {
-    white: games.filter((game) => game.color === "white").length,
-    black: games.filter((game) => game.color === "black").length,
-    unknown: games.filter((game) => game.color === "unknown").length,
-  };
-  const parts = [
-    { key: "white" as const, label: "Baltie", value: counts.white, cls: "bg-piece shadow-[inset_0_0_0_1px_#1e4a38]" },
-    { key: "black" as const, label: "Melnie", value: counts.black, cls: "bg-chart" },
-    { key: "unknown" as const, label: "Krāsa nav norādīta", value: counts.unknown, cls: "bg-line" },
-  ];
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <h3 className="text-xl">{title}</h3>
-      <p className="mt-1 text-sm text-muted">
-        {hint} · {total}
-      </p>
-      <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-bg-deep">
-        {parts.map((part) =>
-          part.value > 0 ? (
-            <div key={part.key} className={part.cls} style={{ width: `${total ? (part.value / total) * 100 : 0}%` }} />
-          ) : null,
-        )}
-      </div>
-      <ul className="mt-3 grid gap-2 text-sm">
-        {parts
-          .filter((part) => part.key !== "unknown" || part.value > 0)
-          .map((part) => (
-            <li key={part.key} className="flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-2">
-                {part.key === "unknown" ? (
-                  <span className="size-5 rounded-sm bg-line" />
-                ) : (
-                  <Knight tone={part.key} className="size-5" />
-                )}
-                {part.label}
-              </span>
-              <span className="tabular-nums">
-                {part.value}
-                <span className="text-muted"> no {total}</span>
-              </span>
-            </li>
-          ))}
-      </ul>
     </div>
   );
 }

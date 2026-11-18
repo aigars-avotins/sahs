@@ -29,8 +29,14 @@ for (const width of [375, 768, 1440]) {
       await page.getByRole("button", { name: /Bērziņš, Jānis/ }).click();
       await expect(page.getByRole("heading", { name: "Bērziņš, Jānis" })).toBeVisible();
       await page.getByRole("button", { name: "Statistika", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Spēlētās krāsas" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Bilance" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Pēc krāsas" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Visas partijas" })).toBeVisible();
+      await page.getByRole("button", { name: /1\. kārta pret Bērziņš, Jānis/ }).click();
+      await expect(page.getByText(/1\. kārta: baltie pret Bērziņš, Jānis — uzvara/)).toBeVisible();
+      await page.getByRole("button", { name: "2026", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Turnīri", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: `screenshots/${width}-${dark ? "dark" : "light"}-stats.png`, fullPage: true });
       expect(errors).toEqual([]);
     });
   }

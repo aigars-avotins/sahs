@@ -14,6 +14,7 @@ Publiskā lapa ir Cloudflare Worker. Pārlūks nesaņem chess-results sīkdatnes
 | `src/lib/chess/stats.ts` | Tempa noteikšana (`paceOf`) un filtrētā statistika (`scopedDossier`) |
 | `src/lib/chess/coordinator.server.ts` | Kopīgā kešatmiņa, intervāli un kļūdu aizture |
 | `src/chess-cache.ts` | Durable Object: 10 s gaidīšana uz atjaunošanu, alarm tās pabeigšanai |
+| `src/lib/chess/insights.ts` | Statistikas aprēķini: filtri, sērijas, pret stiprākiem/vājākiem, turnīra puses, galdi, sporta klases, atkārtotie pretinieki |
 | `src/lib/chess/sql-store.ts` | Kešatmiņa SQLite: viena rinda katrai avota lapai, vecā formāta pārnešana |
 
 ## Nākamā partija
