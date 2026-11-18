@@ -8,6 +8,12 @@ export const SEARCH_TTL = 6 * 60 * MINUTE;
 export const HISTORY_TTL = 7 * 24 * 60 * MINUTE;
 export const META_TTL = 24 * 60 * MINUTE;
 export const REQUEST_GAP = 2_000;
+/**
+ * Bump when the dossier shape or its derived numbers change: the saved snapshot is then
+ * rebuilt on the next visit. The rebuild reuses cached source pages, so it costs no extra requests
+ * for pages that are still fresh.
+ */
+export const POLICY = 4;
 
 type Success = Extract<LoadResult, { ok: true }>;
 export type CacheState = {
@@ -17,7 +23,7 @@ export type CacheState = {
   nextAllowedAt: number;
   nextRequestAt: number;
   failures: number;
-  policy?: 1 | 2 | 3;
+  policy?: number;
   lastError?: string;
   retryAfterUntil?: number;
 };
@@ -82,7 +88,7 @@ export class SourceCoordinator {
       state.failures = 0;
       delete state.lastError;
     }
-    if (state.policy !== 3) {
+    if (state.policy !== POLICY) {
       if (state.policy !== 1 && state.policy !== 2) {
         // Shorten only our legacy first-error 15-minute guard. The old explicit
         // 403/429 guards were at least an hour and must not be bypassed.
@@ -90,10 +96,10 @@ export class SourceCoordinator {
           state.nextAllowedAt = Math.min(state.nextAllowedAt, Math.max(this.now(), state.nextRequestAt - REQUEST_GAP + ACTIVE_TTL));
         }
       } else if (!state.retryAfterUntil) {
-        // The saved dossier predates historical dates and place counts.
+        // The saved dossier was built by older code (dates, place counts, forfeits, pre-start places).
         state.nextAllowedAt = this.now();
       }
-      state.policy = 3;
+      state.policy = POLICY;
       await this.store.write(state);
     }
     const reply = (snapshot: Success): Success => this.reply(state, snapshot);

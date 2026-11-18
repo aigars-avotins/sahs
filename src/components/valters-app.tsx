@@ -609,7 +609,9 @@ function quietTournaments(dossier: Dossier): Tournament[] {
   const upcoming = dossier.tournaments
     .filter((tournament) => dayStatus(tournament.endDate, dossier.today, tournament.startDate) === "upcoming")
     .sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0))[0];
-  const latest = dossier.tournaments.find((tournament) => tournament.points != null);
+  const latest = dossier.tournaments.find(
+    (tournament) => tournament !== upcoming && dayStatus(tournament.endDate, dossier.today, tournament.startDate) === "past",
+  );
   const shown = [upcoming, latest].filter((tournament): tournament is Tournament => Boolean(tournament));
   return shown.length ? shown : dossier.tournaments.slice(0, 1);
 }

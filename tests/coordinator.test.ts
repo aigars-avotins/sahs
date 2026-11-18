@@ -96,3 +96,11 @@ test("the first ever load waits even with a short wait budget", async () => {
   const h = harness(); const result = await h.create().load(h.job, 1);
   assert.equal(result.ok, true); assert.equal(h.times.length, 3);
 });
+test("a snapshot built by older code is rebuilt on the next visit from cached pages", async () => {
+  const h = harness(); await h.create().load(h.job);
+  const state = h.state()!; state.policy = 3; h.setState(state);
+  const before = h.times.length;
+  await h.create().load(h.job);
+  assert.equal(h.state()!.policy, 4); assert.equal(h.times.length, before); // memo entries were still fresh
+  assert.ok(h.state()!.nextAllowedAt > Date.parse("2026-10-24T09:00:00Z"));
+});
