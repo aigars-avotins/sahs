@@ -849,7 +849,8 @@ function StatsView({ dossier }: { dossier: Dossier }) {
     unplayed.byes ? `${unplayed.byes} ${unplayed.byes === 1 ? "brīva kārta" : "brīvas kārtas"}` : "",
   ].filter(Boolean);
   return (
-    <div className="grid gap-4">
+    // minmax(0, 1fr): long nowrap names inside must truncate instead of widening the page.
+    <div className="grid grid-cols-1 gap-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <fieldset className="min-w-0">
           <legend className="mb-2 text-sm font-medium">Gads</legend>
@@ -1022,7 +1023,7 @@ function TournamentRows({ tournaments }: { tournaments: Tournament[] }) {
     <section className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="text-xl">Turnīri</h3>
       <p className="mt-1 text-sm text-muted">Josla rāda vietu starp visiem dalībniekiem: jo garāka, jo augstāk.</p>
-      <ol className="mt-3 grid gap-3">
+      <ol className="mt-3 grid grid-cols-1 gap-3">
         {rows.map((tournament) => {
           const cap = maxPoints(tournament);
           const share = cap && tournament.points != null ? Math.round((tournament.points / cap.value) * 100) : null;
@@ -1030,7 +1031,7 @@ function TournamentRows({ tournaments }: { tournaments: Tournament[] }) {
           const standing = tournament.rank && field > 1 ? 1 - (tournament.rank - 1) / (field - 1) : null;
           const sport = sportClass(tournament);
           return (
-            <li key={tournament.id} className="grid gap-1">
+            <li key={tournament.id} className="grid min-w-0 grid-cols-1 gap-1">
               <div className="flex items-baseline justify-between gap-3">
                 <p className="min-w-0 truncate text-sm font-medium">{displayTournamentName(tournament.name, tournament.endDate)}</p>
                 <p className="shrink-0 text-sm tabular-nums">

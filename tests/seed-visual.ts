@@ -3,6 +3,8 @@ import { dossier } from "./helpers";
 import { emptyState } from "../src/lib/chess/coordinator.server";
 import { rigaToday } from "../src/lib/chess/parse";
 const data = dossier();
+// A real-world-length name: layouts must truncate it, not widen the page.
+data.tournaments[0].name = "Rīgas turnīrs - “Build Your Dreams” 3.sp. kl. klasifikācijas turnīrs - 3. posms (ātrspēle)";
 data.fetchedAt = new Date().toISOString();
 data.tournaments[0].nextGame = {round:3,board:1,color:"white",opponent:"Kalniņš, Roberts Aleksandrs",opponentTitle:"",opponentRating:1450,opponentFed:"LAT",opponentPoints:2,url:"https://chess-results.com/tnr1.aspx",startsAt:"12:30",startsOn:rigaToday()};
 const state = emptyState(); state.nextAllowedAt = Date.now() + 60_000; state.snapshot = {ok:true,dossier:data,stale:false,warning:null};
