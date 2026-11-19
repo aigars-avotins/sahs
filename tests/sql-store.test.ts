@@ -44,3 +44,13 @@ test("the old single-row layout is migrated once and then dropped", async () => 
   assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name = 'cache_state'").all().length, 0);
   assert.deepEqual((await new SqlStateStore(sql).read())?.entries, old.entries);
 });
+
+test("two overlapping reads during the migration both succeed", async () => {
+  const { db, sql } = sqlite();
+  const old = emptyState(); old.entries = { search: { at: 5, value: [1] } };
+  db.exec("CREATE TABLE cache_state (id INTEGER PRIMARY KEY, body TEXT NOT NULL)");
+  db.prepare("INSERT INTO cache_state(id, body) VALUES (1, ?)").run(JSON.stringify(old));
+  const store = new SqlStateStore(sql);
+  const [a, b] = await Promise.all([store.read(), store.read()]);
+  assert.deepEqual(a?.entries, old.entries); assert.deepEqual(b?.entries, old.entries);
+});

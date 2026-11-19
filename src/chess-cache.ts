@@ -17,7 +17,11 @@ export class ChessCache extends DurableObject {
     const result = await this.coordinator.load(scrapeDossier, QUICK_WAIT);
     // Visits only start refreshes (no polling without visitors). If one is still running,
     // the alarm finishes it even if this object is evicted first; the shared guard still applies.
-    if (this.coordinator.busy) await this.ctx.storage.setAlarm(Date.now() + 2 * MINUTE);
+    if (this.coordinator.busy) {
+      await this.ctx.storage.setAlarm(Date.now() + 2 * MINUTE);
+      // Finished normally: the safety alarm must not turn into a refresh nobody asked for.
+      void this.coordinator.settled().then(() => this.ctx.storage.deleteAlarm());
+    }
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   }
   async alarm(): Promise<void> {

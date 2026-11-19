@@ -121,7 +121,7 @@ function statusClass(label: string | null): string {
 function eventLabel(tournament: Tournament, today: string): string | null {
   if (tournament.nextGame || tournament.awaitingPairing) return "Notiek";
   if (!tournament.endDate) return null;
-  const status = dayStatus(tournament.endDate, today) as string;
+  const status = dayStatus(tournament.endDate, today, tournament.startDate) as string;
   if (status === "today" || status === "live") return "Notiek";
   if (status === "upcoming") return "Gaidāms";
   if (status === "past") return "Noslēdzies";
@@ -559,6 +559,7 @@ function CurrentView({
   const shown = live.length > 0 ? live : quietTournaments(dossier);
   return (
     <div className="grid gap-4">
+      <h2 className="sr-only">Aktuālais</h2>
       <NextGames dossier={dossier} alerts={alerts} onBannerVisible={onBannerVisible} />
       {shown.length === 0 ? (
         <Empty>Turnīru vēl nav.</Empty>
@@ -732,6 +733,7 @@ function NextGameBanner({
             <>
               <p className="mt-1 text-sm text-on-pine">
                 {historyLine(played)}
+                {next.opponentPoints != null ? ` · šajā turnīrā ${pointsLabel(next.opponentPoints)}` : ""}
                 {next.opponentFed ? ` · ${next.opponentFed}` : ""}
               </p>
               {last ? (
@@ -768,7 +770,7 @@ function LiveStatus({ tournament, alerts }: { tournament: Tournament; alerts: Al
   return (
     <section className="rounded-2xl border border-line bg-surface px-5 py-4">
       <p className="text-sm font-medium tracking-wide text-pine uppercase">
-        {waiting ? "Gaidām izlozi" : "Šodienas turnīrs"}
+        {waiting ? "Gaidām izlozi" : "Notiek turnīrs"}
       </p>
       <p className="mt-2 text-lg">
         {waiting
@@ -851,6 +853,7 @@ function StatsView({ dossier }: { dossier: Dossier }) {
   return (
     // minmax(0, 1fr): long nowrap names inside must truncate instead of widening the page.
     <div className="grid grid-cols-1 gap-4">
+      <h2 className="sr-only">Statistika</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <fieldset className="min-w-0">
           <legend className="mb-2 text-sm font-medium">Gads</legend>
@@ -1264,12 +1267,13 @@ function Board({ dossier, part }: { dossier: Dossier; part: "tournaments" | "opp
   return (
     <div className="grid gap-6">
       <div className="grid gap-3">
-        <label className="flex h-14 items-center gap-3 rounded-full border border-line bg-white px-4">
+        <label className="flex h-14 items-center gap-3 rounded-full border border-line bg-white px-4 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-pine">
           <Search className="size-5 text-muted" aria-hidden />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={part === "tournaments" ? "Meklēt turnīru" : "Meklēt pretinieku vai klubu"}
+            aria-label={part === "tournaments" ? "Meklēt turnīru" : "Meklēt pretinieku vai klubu"}
             autoComplete="off"
             enterKeyHint="search"
             className="w-full bg-transparent text-base outline-none placeholder:text-muted"
@@ -1573,7 +1577,8 @@ function OpponentRow({
   pressed: boolean;
   onSelect: () => void;
 }) {
-  const percent = opponent.scored ? Math.round((opponent.score / opponent.scored) * 100) : 0;
+  // Met only by forfeit: there is no played record to show.
+  const percent = opponent.scored ? Math.round((opponent.score / opponent.scored) * 100) : null;
   return (
     <button
       type="button"
@@ -1596,9 +1601,11 @@ function OpponentRow({
       </span>
       <span className="text-right">
         <span className="block font-medium tabular-nums">
-          {opponent.wins}–{opponent.draws}–{opponent.losses}
+          {opponent.scored ? `${opponent.wins}–${opponent.draws}–${opponent.losses}` : "—"}
         </span>
-        <span className="block text-sm text-muted tabular-nums">{pointsLabel(opponent.score)} · {percent}%</span>
+        <span className="block text-sm text-muted tabular-nums">
+          {percent == null ? "bez spēles" : `${pointsLabel(opponent.score)} · ${percent}%`}
+        </span>
       </span>
     </button>
   );
@@ -1712,7 +1719,11 @@ function ResultMark({
 }
 
 function liveTournaments(dossier: Dossier): Tournament[] {
-  return dossier.tournaments.filter((tournament) => dayStatus(tournament.endDate, dossier.today) === "today" || tournament.nextGame || tournament.awaitingPairing);
+  return dossier.tournaments.filter((tournament) => {
+    // Multi-day tournaments are "live" on the days between rounds too, not "upcoming".
+    const status = dayStatus(tournament.endDate, dossier.today, tournament.startDate);
+    return status === "today" || status === "live" || tournament.nextGame || tournament.awaitingPairing;
+  });
 }
 
 function colorName(color: PieceColor): string {
@@ -1892,10 +1903,11 @@ function RoundLine({ games, scheduled, nextRound }: { games: Game[]; scheduled: 
               key={round}
               className={`grid h-12 w-9 shrink-0 grid-rows-2 place-items-center rounded-lg text-center tabular-nums ${tone}`}
               title={title}
-              aria-label={`${title}${mark ? `, ${mark}` : round === nextRound ? ", nākamā" : ""}`}
             >
-              <span className="text-xs leading-none opacity-70">{round}</span>
-              <span className="text-sm leading-none font-medium">{mark || (round === nextRound ? "•" : "")}</span>
+              {/* aria-label on a plain list item is not read out reliably; spell it out instead. */}
+              <span className="sr-only">{`${title}${mark ? `, ${mark}` : round === nextRound ? ", nākamā" : ", vēl nav spēlēta"}`}</span>
+              <span aria-hidden className="text-xs leading-none opacity-70">{round}</span>
+              <span aria-hidden className="text-sm leading-none font-medium">{mark || (round === nextRound ? "•" : "")}</span>
             </li>
           );
         })}

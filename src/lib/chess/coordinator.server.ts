@@ -32,11 +32,20 @@ export interface StateStore {
   write(state: CacheState): Promise<void>;
 }
 export interface SourceContext {
-  memo<T>(key: string, ttl: number, load: () => Promise<T>): Promise<T>;
+  /** With `keepStale`, a failed reload (other than a source refusal) returns the previous value instead of throwing. */
+  memo<T>(key: string, ttl: number, load: () => Promise<T>, options?: { keepStale?: boolean }): Promise<T>;
   request(url: string, init?: RequestInit): Promise<Response>;
 }
 export class SourceError extends Error {
-  constructor(message: string, public retryAfter = 0) { super(message); }
+  constructor(message: string, public retryAfter = 0, public status = 0) { super(message); }
+}
+
+/**
+ * The source asked us to back off (rate limit, block, human check). Such errors must always reach
+ * the coordinator's guard; other source errors (a 404 on an optional page) may be handled locally.
+ */
+export function isRefusal(error: unknown): boolean {
+  return error instanceof SourceError && (error.retryAfter > 0 || [403, 429, 503].includes(error.status));
 }
 export const emptyState = (): CacheState => ({ version: 2, entries: {}, nextAllowedAt: 0, nextRequestAt: 0, failures: 0 });
 
@@ -60,6 +69,11 @@ export class SourceCoordinator {
     if (!this.pending) this.pending = this.run(job).finally(() => { this.pending = null; });
     if (!Number.isFinite(waitMs)) return this.pending;
     return this.waitOrSnapshot(this.pending, waitMs);
+  }
+
+  /** Resolves when the running refresh (if any) has finished. */
+  settled(): Promise<unknown> {
+    return this.pending ?? Promise.resolve();
   }
 
   /** True while a refresh is still running. */
@@ -111,10 +125,17 @@ export class SourceCoordinator {
     state.nextAllowedAt = this.now() + ACTIVE_TTL;
     await this.store.write(state);
     const context: SourceContext = {
-      memo: async <T,>(key: string, ttl: number, load: () => Promise<T>): Promise<T> => {
+      memo: async <T,>(key: string, ttl: number, load: () => Promise<T>, options?: { keepStale?: boolean }): Promise<T> => {
         const cached = state.entries[key];
         if (cached && this.now() - cached.at < ttl) return cached.value as T;
-        const value = await load(); // Validate before replacing the last good value.
+        let value: T;
+        try {
+          value = await load(); // Validate before replacing the last good value.
+        } catch (error) {
+          // A refusal (429, captcha) must still abort the whole batch.
+          if (options?.keepStale && cached && !isRefusal(error)) return cached.value as T;
+          throw error;
+        }
         state.entries[key] = { at: this.now(), value };
         await this.store.write(state);
         return value;
@@ -133,7 +154,7 @@ export class SourceCoordinator {
           const raw = response.headers.get("retry-after");
           const seconds = raw ? Number(raw) : NaN;
           const delay = raw ? (Number.isFinite(seconds) ? seconds * 1000 : Date.parse(raw) - this.now()) : 0;
-          throw new SourceError(`chess-results.com atbildēja ar kļūdu ${response.status}.`, Math.max(Number.isFinite(delay) ? delay : 0, 0));
+          throw new SourceError(`chess-results.com atbildēja ar kļūdu ${response.status}.`, Math.max(Number.isFinite(delay) ? delay : 0, 0), response.status);
         }
         return response;
       },
@@ -149,8 +170,10 @@ export class SourceCoordinator {
       // Bound storage; keep source pages for tournaments still in the dossier.
       const ids = new Set(result.dossier.tournaments.map(t => t.id));
       for (const key of Object.keys(state.entries)) {
-        const id = key.match(/^(?:card|meta:shown|meta:open|meta|round|standings|field):(\d+)/)?.[1];
+        const id = key.match(/^(?:card|meta:shown|meta:open|meta|round|standings|field|opp):(\d+)/)?.[1];
         if (id && !ids.has(id)) delete state.entries[key];
+        // Opponent lookups are not tied to a listed tournament; drop them once they would be refetched anyway.
+        else if (/^(?:glance|opp):/.test(key) && this.now() - state.entries[key].at > HISTORY_TTL) delete state.entries[key];
       }
       await this.store.write(state);
       return reply(result);

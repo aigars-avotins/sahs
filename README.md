@@ -13,11 +13,15 @@ Visi apmeklētāji izmanto vienu servera kešatmiņu. Poga **Atjaunot**, automā
 | Turnīra apraksts un datumi | 24 stundas |
 | Spēlētāja turnīru meklēšana | 6 stundas |
 | Nākotnes un vēsturisko turnīru kartītes | 7 dienas (aktīvajam turnīram pārslēdzas uz 1 minūti) |
+| Kartīte pirmās 3 dienas pēc turnīra beigām (vēlu ievadīti pēdējās kārtas rezultāti) | 1 stunda |
+| Nākamā pretinieka kartīte (FIDE numuram) un viņa turnīru meklēšana | 7 dienas |
 
 - Vienlaicīgi ienākušie pieprasījumi tiek apvienoti. Avota pieprasījumi ir secīgi, ar vismaz 2 sekunžu atstarpi.
 - Nav cron vai fonā darbojošās avota aptaujas bez apmeklētājiem. Atjaunošanu sāk tikai apmeklējums; ja tā ilgst vairāk par 10 sekundēm, apmeklētājs uzreiz saņem pēdējos derīgos datus, bet ielāde turpinās fonā (Durable Object alarm to pabeidz arī pēc objekta izlikšanas) un jaunie dati ir nākamajam apmeklējumam. Paslēpta lapa un bezsaistes režīms neaptaujā serveri.
 - Pēc pirmās kļūmes atkārtota pārbaude pēc 1 minūtes; secīgām kļūmēm — 2, 4, 8 un līdz 15 minūtēm. Avota `Retry-After` vienmēr ir saistošs, arī ja tas ir ilgāks; atpazītai cilvēka pārbaudes lapai — 15 minūšu aizture. Sākotnējais kļūdas iemesls tiek saglabāts un parādīts arī aiztures laikā.
-- Kļūda aptur konkrēto ielādes ciklu. Neatpazīts HTML un cita spēlētāja kartīte neaizstāj iepriekšējos derīgos datus.
+- Avota atteikums (403, 429, 503, `Retry-After` vai cilvēka pārbaude) vienmēr aptur visu ielādes ciklu un nonāk aizturē, arī ja tas notiek neobligātā pieprasījumā (pretinieka kopsavilkums, dalībnieku skaits, turnīra apraksts).
+- Citas kļūdas: neatpazīts HTML un cita spēlētāja kartīte neaizstāj iepriekšējos derīgos datus. Ja salūzt viena vēsturiska turnīra lapa, tiek rādīti tās pēdējie derīgie dati vai turnīrs atzīmēts kā daļēji nolasīts, bet pārējie turnīri un notiekošais turnīrs atjaunojas. Notiekoša turnīra kļūda aptur ciklu, lai netiktu rādīts turnīrs bez partijām.
+- Drošības alarm (pabeigt lēnu atjaunošanu pēc objekta izlikšanas) tiek atcelts, kad atjaunošana pabeidzas, tāpēc tas nekļūst par atjaunošanu bez apmeklētāja.
 - Aizture, parsētās lapas un pēdējais derīgais kopsavilkums saglabājas pēc servera pārstartēšanas. Arī neveiksmīga pirmā ielāde saglabā aizturi.
 - Pirmā ielāde (tukša kešatmiņa) ir lēnāka un vienīgā, kurā apmeklētājs gaida, jo vēsture jānolasa ar pauzēm. Turpmāk avots tiek pieprasīts tikai novecojušajām kešatmiņas daļām.
 

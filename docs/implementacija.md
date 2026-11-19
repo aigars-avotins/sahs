@@ -21,7 +21,7 @@ Publiskā lapa ir Cloudflare Worker. Pārlūks nesaņem chess-results sīkdatnes
 
 Aktīvam turnīram vispirms tiek lasīta Valtera kartīte (`art=9`). Ja tajā ir partija bez rezultāta, tā ir nākamais pāris. Papildus tiek lasīta kārtas izloze (`art=2`), lai paņemtu galdiņu, krāsu un kārtas sākuma laiku. Izlozes publicēšanas laiku chess-results nedod, tāpēc lapa to nerāda.
 
-Pretinieka FIDE numurs izlozes rindā parasti nav. Tas tiek lasīts no pretinieka kartītes lauka `Fide-ID`, ja rindā ir `snr`. Pēc tam `spielersuche` tiek izsaukta ar šo numuru. Rezultāts ir `OpponentGlance`: turnīru skaits, labākā vieta un trīs jaunākie turnīri. Meklēšana tiek kešota ar vēstures intervālu, lai katra atjaunošana neatsauktu meklēšanu no jauna.
+Pretinieka FIDE numurs izlozes rindā parasti nav. Tas tiek lasīts no pretinieka kartītes lauka `Fide-ID`, ja rindā ir `snr`. Pēc tam `spielersuche` tiek izsaukta ar šo numuru. Rezultāts ir `OpponentGlance`: turnīru skaits, labākā vieta un trīs jaunākie turnīri. Gan pretinieka kartīte (`opp:<turnīrs>:<snr>`), gan meklēšana (`glance:<FIDE>`) tiek kešotas ar vēstures intervālu, lai katra atjaunošana tās neatsauktu no jauna; ieraksti tiek izmesti pēc 7 dienām. Nākamās partijas kartē pie pretinieka ir arī viņa punkti šajā turnīrā.
 
 Iepriekšējās savstarpējās partijas netiek meklētas pretinieka profilā. Tās tiek saliktas no Valtera jau ielādētajām partijām pēc vārda.
 

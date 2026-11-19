@@ -61,3 +61,8 @@ test("manifest and all icons resolve locally", async ({ request }) => {
   for (const icon of data.icons) expect((await request.get(icon.src)).status()).toBe(200);
   expect((await request.get("/apple-touch-icon.png")).status()).toBe(200);
 });
+test("unknown address shows a Latvian not-found page", async ({ page }) => {
+  await page.goto("/nav-tadas-lapas");
+  await expect(page.getByRole("heading", { name: "Lapa nav atrasta" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Uz sākumu" })).toBeVisible();
+});

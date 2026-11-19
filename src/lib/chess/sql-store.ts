@@ -13,6 +13,8 @@ export interface SqlLike {
 export class SqlStateStore implements StateStore {
   /** `at` of each entry as last read or written, to skip unchanged rows. */
   private written = new Map<string, number>();
+  /** One migration per object, even when two reads overlap. */
+  private migration: Promise<CacheState | undefined> | null = null;
 
   constructor(private sql: SqlLike, private transaction: (run: () => void) => void = (run) => run()) {
     sql.exec("CREATE TABLE IF NOT EXISTS cache_meta (id INTEGER PRIMARY KEY, body TEXT NOT NULL)");
@@ -20,7 +22,9 @@ export class SqlStateStore implements StateStore {
   }
 
   async read(): Promise<CacheState | undefined> {
-    const legacy = await this.legacy();
+    this.migration ??= this.legacy();
+    const legacy = await this.migration;
+    this.migration = null;
     if (legacy) return legacy;
     const meta = this.sql.exec("SELECT body FROM cache_meta WHERE id = 1").toArray()[0];
     if (!meta) return undefined;
@@ -68,7 +72,7 @@ export class SqlStateStore implements StateStore {
     const state = row ? (JSON.parse(String(row.body)) as CacheState) : undefined;
     // Write the new layout first; the old table goes only after that succeeded.
     if (state) await this.write(state);
-    this.sql.exec("DROP TABLE cache_state");
+    this.sql.exec("DROP TABLE IF EXISTS cache_state");
     return state;
   }
 }

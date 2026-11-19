@@ -1,14 +1,16 @@
 import {
   buildDossier, countParticipants, decodeEntities, parsePlayerCard, parseRoundClock,
   parseRoundPairing, parseSearchResults, parseStandings, parseTournamentMeta,
-  isBye, parseRoundDate, pendingGameFromCard, rigaToday, type SearchHit,
+  isBye, parseRoundDate, pendingGameFromCard, rigaToday, type CardParse, type SearchHit, type TournamentMeta,
 } from "./parse";
 import { EXTRA_PLACE, EXTRA_TOURNAMENTS, PLAYER } from "./config";
-import { ACTIVE_TTL, HISTORY_TTL, META_TTL, SEARCH_TTL, SourceError, type SourceContext } from "./coordinator.server";
-import type { LoadResult, NextGame, OpponentGlance } from "./types";
+import { ACTIVE_TTL, HISTORY_TTL, META_TTL, MINUTE, SEARCH_TTL, SourceError, isRefusal, type SourceContext } from "./coordinator.server";
+import type { LoadResult, NextGame, OpponentGlance, Standings } from "./types";
 const FIDE_ID = PLAYER.fideId;
 const UA = "ValtersAssistant/2.0 (personal chess dashboard; +https://kalns.eu)";
 const MAX_TOURNAMENTS = 100;
+/** Card refresh for the first days after a tournament ends, until late final results are in. */
+const FINISH_TTL = 60 * MINUTE;
 const SEARCH_URL = "https://chess-results.com/spielersuche.aspx?lan=1";
 
 function storeCookies(jar: Map<string, string>, response: Response) {
@@ -100,14 +102,18 @@ async function withGlance(source: SourceContext, next: NextGame, tournamentId: s
   try {
     let fide = next.opponentFideId && next.opponentFideId !== "0" ? next.opponentFideId : "";
     if (!fide && next.opponentSnr) {
-      const html = (await request(source, `https://chess-results.com/tnr${tournamentId}.aspx?lan=1&art=9&snr=${next.opponentSnr}`)).html;
-      fide = parsePlayerCard(html).fideId;
+      const snr = next.opponentSnr;
+      fide = await source.memo(`opp:${tournamentId}:${snr}`, HISTORY_TTL, async () =>
+        parsePlayerCard((await request(source, `https://chess-results.com/tnr${tournamentId}.aspx?lan=1&art=9&snr=${snr}`)).html).fideId,
+      );
     }
     if (!fide || fide === "0" || fide === FIDE_ID) return next;
     const hits = await searchByFide(source, fide);
     if (!hits.length) return { ...next, opponentFideId: fide };
     return { ...next, opponentFideId: fide, glance: glanceFrom(fide, hits) };
-  } catch {
+  } catch (error) {
+    // The glance is optional, but a source refusal must reach the coordinator's guard.
+    if (isRefusal(error)) throw error;
     return next;
   }
 }
@@ -143,7 +149,8 @@ async function tournamentMetaHtml(source: SourceContext, id: string): Promise<st
     });
     const text = opened.html.replace(/<[^>]+>/g, " ");
     if (!DETAILS_BUTTON.test(opened.html) || /Number of rounds\s+\d+/i.test(text) || /\bDate\s+\d{4}\/\d{2}\/\d{2}/i.test(text)) return opened.html;
-  } catch {
+  } catch (error) {
+    if (isRefusal(error)) throw error;
     // The closed page still has the games; missing place and date stay marked hidden.
   }
   return page.html;
@@ -155,7 +162,8 @@ async function participantCount(source: SourceContext, id: string): Promise<numb
       const html = (await request(source, `https://chess-results.com/tnr${id}.aspx?lan=1&art=${art}&fed=LAT&turdet=YES&flag=30`)).html;
       const count = countParticipants(html);
       if (count) return count;
-    } catch {
+    } catch (error) {
+      if (isRefusal(error)) throw error;
       // The other list may still be public.
     }
   }
@@ -165,52 +173,74 @@ async function participantCount(source: SourceContext, id: string): Promise<numb
 export async function scrapeDossier(source: SourceContext): Promise<Extract<LoadResult, { ok: true }>> {
   const hits = await searchPlayer(source);
   const today = rigaToday();
-  const cards = [], metas = [], nextGames: Array<NextGame | null> = [], standings = [];
+  const cards: Array<CardParse | null> = [], metas: Array<TournamentMeta | null> = [], nextGames: Array<NextGame | null> = [], standings: Array<Standings | null> = [];
   const preparedHits: SearchHit[] = [];
   // Serial source access, shared memo entries: historical pages are never fetched every refresh.
   for (const hit of hits) {
-    const cached = await source.memo(`meta:shown:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)));
-    // Copy: the memoized value is shared state and must not absorb local fallbacks.
-    const meta = { ...cached, location: cached.location || EXTRA_PLACE[hit.id] || "" };
-    if (!hit.fieldSize && !meta.fieldSize) {
-      const size = await source.memo(`field:${hit.id}`, HISTORY_TTL, () => participantCount(source, hit.id));
-      if (size) meta.fieldSize = size;
+    let active = false;
+    try {
+      const row = await tournamentData(source, hit, today, (value) => { active = value; });
+      preparedHits.push(row.hit); cards.push(row.card); metas.push(row.meta); nextGames.push(row.next); standings.push(row.neighbors);
+    } catch (error) {
+      // A refusal stops everything (the guard must see it), and so does a broken running tournament:
+      // the last good snapshot is better than one without its games.
+      if (isRefusal(error) || active) throw error;
+      // One old tournament that disappeared or changed layout must not block the live ones.
+      preparedHits.push(hit); cards.push(null); metas.push(null); nextGames.push(null); standings.push(null);
     }
-    const endDate = meta.eventDate || hit.endDate;
-    const active = meta.startDate <= today && endDate >= today;
-    const card = await source.memo(`card:${hit.id}`, active ? ACTIVE_TTL : HISTORY_TTL, async () => {
-      const parsed = parsePlayerCard((await request(source, `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=9&snr=${hit.snr}`)).html);
-      const normalize = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z]/g, "");
-      if (normalize(parsed.name) !== normalize(hit.name)) throw new Error("Spēlētāja identitāte neatbilst; iepriekšējie dati saglabāti.");
-      return parsed;
-    });
-    let next: NextGame | null = null;
-    let neighbors = null;
-    if (active) {
-      next = pendingGameFromCard(card, hit.playerHref);
-      const lastRound = Math.max(0, ...card.games.filter(g => g.score != null).map(g => g.round));
-      const round = next?.round || lastRound + 1;
-      if (round <= (meta.roundsScheduled ?? round)) {
-        const url = `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=2&rd=${round}&flag=30`;
-        const parsed = await source.memo(`round:${hit.id}:${round}`, ACTIVE_TTL, async () => {
-          const html = (await request(source, url)).html;
-          if (!/<title>[\s\S]*Chess-Results/i.test(html) && !/class=["']CR/i.test(html)) throw new Error("Izlozes lapa nav atpazīta.");
-          return { seat: parseRoundPairing(html, hit.snr, round, url), startsAt: parseRoundClock(html), startsOn: parseRoundDate(html) };
-        });
-        const when = { startsAt: parsed.startsAt, startsOn: parsed.startsOn || undefined };
-        if (parsed.seat?.pending) next = { ...parsed.seat, ...when };
-        else if (next) next = { ...next, url, ...when };
-      }
-      neighbors = await source.memo(`standings:${hit.id}`, 15 * 60_000, async () => parseStandings((await request(source, `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=1`)).html, card.name, hit.snr));
-    }
-    if (next) next = await withGlance(source, next, hit.id);
-    preparedHits.push({ ...hit, endDate });
-    cards.push(card); metas.push(meta); nextGames.push(next); standings.push(neighbors);
   }
   return {
     ok: true, stale: false, warning: null,
     dossier: buildDossier({ hits: preparedHits, cards, metas, nextGames, standings, fetchedAt: new Date().toISOString(), today, fideId: FIDE_ID }),
   };
+}
+
+async function tournamentData(source: SourceContext, hit: SearchHit, today: string, onActive: (active: boolean) => void) {
+  const cached = await source.memo(`meta:shown:${hit.id}`, META_TTL, async () => parseTournamentMeta(await tournamentMetaHtml(source, hit.id)), { keepStale: true });
+  // Copy: the memoized value is shared state and must not absorb local fallbacks.
+  const meta = { ...cached, location: cached.location || EXTRA_PLACE[hit.id] || "" };
+  if (!hit.fieldSize && !meta.fieldSize) {
+    const size = await source.memo(`field:${hit.id}`, HISTORY_TTL, () => participantCount(source, hit.id));
+    if (size) meta.fieldSize = size;
+  }
+  const endDate = meta.eventDate || hit.endDate;
+  const active = meta.startDate <= today && endDate >= today;
+  onActive(active);
+  // The final round's result often appears after the last visit of the day: re-check hourly for a few days.
+  const justEnded = !active && Boolean(endDate) && endDate < today && endDate >= daysBefore(today, 3);
+  const card = await source.memo(`card:${hit.id}`, active ? ACTIVE_TTL : justEnded ? FINISH_TTL : HISTORY_TTL, async () => {
+    const parsed = parsePlayerCard((await request(source, `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=9&snr=${hit.snr}`)).html);
+    const normalize = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z]/g, "");
+    if (normalize(parsed.name) !== normalize(hit.name)) throw new Error("Spēlētāja identitāte neatbilst; iepriekšējie dati saglabāti.");
+    return parsed;
+  }, { keepStale: !active });
+  let next: NextGame | null = null;
+  let neighbors = null;
+  if (active) {
+    next = pendingGameFromCard(card, hit.playerHref);
+    const lastRound = Math.max(0, ...card.games.filter(g => g.score != null).map(g => g.round));
+    const round = next?.round || lastRound + 1;
+    if (round <= (meta.roundsScheduled ?? round)) {
+      const url = `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=2&rd=${round}&flag=30`;
+      const parsed = await source.memo(`round:${hit.id}:${round}`, ACTIVE_TTL, async () => {
+        const html = (await request(source, url)).html;
+        if (!/<title>[\s\S]*Chess-Results/i.test(html) && !/class=["']CR/i.test(html)) throw new Error("Izlozes lapa nav atpazīta.");
+        return { seat: parseRoundPairing(html, hit.snr, round, url), startsAt: parseRoundClock(html), startsOn: parseRoundDate(html) };
+      });
+      const when = { startsAt: parsed.startsAt, startsOn: parsed.startsOn || undefined };
+      if (parsed.seat?.pending) next = { ...parsed.seat, ...when };
+      else if (next) next = { ...next, url, ...when };
+    }
+    neighbors = await source.memo(`standings:${hit.id}`, 15 * 60_000, async () => parseStandings((await request(source, `https://chess-results.com/tnr${hit.id}.aspx?lan=1&art=1`)).html, card.name, hit.snr));
+  }
+  if (next) next = await withGlance(source, next, hit.id);
+  return { hit: { ...hit, endDate }, card, meta, next, neighbors };
+}
+
+function daysBefore(day: string, days: number): string {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
 }
 
 export async function loadDossier(): Promise<LoadResult> {
