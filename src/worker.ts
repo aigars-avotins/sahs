@@ -21,6 +21,16 @@ function withSecurityHeaders(response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+/**
+ * The 20 s lifetime is only for Cloudflare's edge copy. Browsers must revalidate every time:
+ * the zone's "Browser Cache TTL" (4 h) would otherwise raise a short max-age to hours.
+ */
+function forBrowser(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "private, no-cache");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request: Request, _env: unknown, ctx: ExecutionContext): Promise<Response> {
     const key = edgeCacheKey(request);
@@ -28,7 +38,7 @@ export default {
     const cache = key && typeof caches !== "undefined" ? (caches as unknown as { default: Cache }).default : null;
     if (cache && key) {
       const hit = await cache.match(key);
-      if (hit) return hit;
+      if (hit) return forBrowser(hit);
     }
     const response = withSecurityHeaders(await handler.fetch(request));
     if (cache && key && response.status === 200 && !response.headers.has("Set-Cookie")) {
@@ -36,6 +46,6 @@ export default {
       stored.headers.set("Cache-Control", `public, max-age=${EDGE_SECONDS}`);
       ctx.waitUntil(cache.put(key, stored));
     }
-    return response;
+    return key ? forBrowser(response) : response;
   },
 };
