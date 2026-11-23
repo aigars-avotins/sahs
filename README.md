@@ -60,6 +60,14 @@ Manifestam un PNG ikonām ir vietējās adreses. Safari: kopīgošanas izvēlne 
 
 Paziņojumi ir papildiespēja aktīvai lapai, neatkarīga no automātiskās datu atjaunošanas. To piegāde aizvērtā lapā vai bloķētā telefonā nav garantēta. Servisa darbinieks pats neaptaujā chess-results un neievieš fona trafiku. Pilnam Web Push vajadzīgs atsevišķi konfigurēts abonementu/piegādes risinājums; šajā versijā tas netiek izlikts par darbojošos.
 
+## Drošība
+
+- Lapa atbild tikai uz pielāgotā domēna: `workers_dev` un `preview_urls` ir izslēgti, tāpēc nav `*.workers.dev` kopijas, kas apietu domēna iestatījumus.
+- Visas ārējās saites (turnīrs, izloze) tiek pārbaudītas ar `chessResultsHref`: tikai `https` uz chess-results.com un tā `S` serveriem, citādi saite ved uz chess-results sākumlapu.
+- Worker pievieno HSTS, `X-Frame-Options: DENY`, `Referrer-Policy` un `Permissions-Policy`. CSP vēl nav, jo ietvara hidratācijas un tēmas skripti ir iekšēji.
+- Lapa un ietvara datu pieprasījumi 20 sekundes tiek kešoti Cloudflare malā (`src/lib/edge-cache.ts`). Atkārtota ielāde nepamodina Durable Object; vaicājuma parametri lapai tiek ignorēti, lai ar tiem nevarētu apiet kešu. Pret apzinātu pārslodzi papildus var pievienot Cloudflare WAF ātruma ierobežojumu.
+- GitHub Actions ir piesaistītas konkrētiem commit SHA; Dependabot reizi nedēļā atver atjauninājumu PR (nekas netiek apvienots automātiski).
+
 ## Pārbaudes
 
 ```sh

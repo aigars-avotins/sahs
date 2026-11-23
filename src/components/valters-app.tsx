@@ -26,6 +26,7 @@ import {
 } from "@/lib/chess/alerts";
 import { PLAYER, SPORT_CLASS } from "@/lib/chess/config";
 import { getDossier } from "@/lib/chess/dossier";
+import { chessResultsHref } from "@/lib/chess/source-url";
 import {
   boardSplit,
   classProgress,
@@ -750,7 +751,7 @@ function NextGameBanner({
           <Neighbors tournament={tournament} light />
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
             <AlertButton alerts={alerts} onPine />
-            <a href={next.url} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center gap-2 text-sm font-medium text-white">
+            <a href={chessResultsHref(next.url)} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center gap-2 text-sm font-medium text-white">
               Izloze chess-results
               <ExternalLink className="size-4" aria-hidden />
             </a>
@@ -1502,7 +1503,7 @@ function TournamentCard({
             </>
           )}
           <a
-            href={tournament.playerUrl}
+            href={chessResultsHref(tournament.playerUrl)}
             target="_blank"
             rel="noreferrer"
             className="mt-4 inline-flex h-12 items-center gap-2 text-sm font-medium text-pine"

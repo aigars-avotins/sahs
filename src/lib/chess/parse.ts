@@ -10,6 +10,7 @@ import type {
   Tournament,
 } from "./types";
 import { PLAYER } from "./config";
+import { chessResultsHref } from "./source-url";
 
 const NAMED: Record<string, string> = {
   amp: "&",
@@ -435,9 +436,7 @@ export function pendingGameFromCard(card: CardParse | null, playerHref: string):
 }
 
 function absoluteChessUrl(href: string): string {
-  if (!href) return "https://chess-results.com/";
-  if (href.startsWith("http")) return href;
-  return `https://chess-results.com/${href.replace(/^\.\//, "")}`;
+  return chessResultsHref(href);
 }
 
 function longerName(...parts: Array<string | undefined>): string {

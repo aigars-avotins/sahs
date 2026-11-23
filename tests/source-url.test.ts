@@ -83,3 +83,13 @@ test('one old tournament that changed layout does not block the others', async (
     assert.match(result.dossier.partialNote ?? '', /neizdevās/);
   }
 });
+
+test('scraped links stay on chess-results over HTTPS', async () => {
+  const { chessResultsHref } = await import('../src/lib/chess/source-url');
+  assert.equal(chessResultsHref('tnr1.aspx?lan=1&art=9&snr=4'), 'https://chess-results.com/tnr1.aspx?lan=1&art=9&snr=4');
+  assert.equal(chessResultsHref('./tnr2.aspx'), 'https://chess-results.com/tnr2.aspx');
+  assert.equal(chessResultsHref('http://s2.chess-results.com/tnr3.aspx'), 'https://s2.chess-results.com/tnr3.aspx');
+  for (const bad of ['https://evil.example/', 'javascript:alert(1)', '//evil.example/x', 'https://chess-results.com.evil.example/', 'data:text/html,x']) {
+    assert.equal(chessResultsHref(bad), 'https://chess-results.com/', bad);
+  }
+});
